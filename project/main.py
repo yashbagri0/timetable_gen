@@ -157,7 +157,7 @@ def main():
     # Pass semester type to data loader
     semester_type = config_mgr.get('semester.type', 'odd')
     
-    data_loader = DataLoader("inputs/input3.xlsx")
+    data_loader = DataLoader("inputs/exceptions_input.xlsx")
     data_loader.semester_type = semester_type  # Set semester type before validation
     
     if not data_loader.validate_data():
@@ -190,7 +190,7 @@ def main():
             else:
                 print("Invalid input. Enter 'y' or 'n'")
     
-    # Step 1.5: PRE-SOLVER FEASIBILITY CHECK
+    # Step 1.1: PRE-SOLVER FEASIBILITY CHECK
     print("\n" + "=" * 70)
     print("📋 STEP 1.5: PRE-SOLVER FEASIBILITY CHECK")
     print("-" * 70)

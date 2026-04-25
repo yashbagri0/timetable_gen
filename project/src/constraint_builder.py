@@ -6,6 +6,7 @@ from ortools.sat.python import cp_model
 from src.config import Config
 from typing import List, Dict, Any, Tuple, Set
 import pandas as pd
+from pprint import pprint
 
 class ConstraintBuilder: 
     def __init__(self, subjects: List[Dict], teachers: List[str], rooms: List[str], 
@@ -97,7 +98,6 @@ class ConstraintBuilder:
             return f"MERGE_{subj['Merge_Group_ID']}"
         else:
             return self._build_subject_id(subj)
-
     
     def _get_allowed_slots_for_subject(self, subj: Dict) -> Set[int]:
         """
@@ -141,10 +141,10 @@ class ConstraintBuilder:
             for fixed_type in semester_fixed_types:
                 blocked_slots.update(Config.get_fixed_slot_indices(fixed_type, semester))
             
-            # Also block GE_LAB slots for all years
-            for year in [1, 2, 3, 4]:
-                ge_lab_slots = Config.get_fixed_slot_indices("GE_LAB", year * 2 - 1)
-                blocked_slots.update(ge_lab_slots)
+            # Also block GE_LAB slots for that particular year
+            semester = subj["Semester"]
+            ge_lab_slots = Config.get_fixed_slot_indices("GE_LAB", semester)
+            blocked_slots.update(ge_lab_slots)
             
             return all_slots - blocked_slots
     
@@ -178,8 +178,8 @@ class ConstraintBuilder:
             'tutorial': {},
             'practical': {},
             'room_assignment': {},
-            'room_penalty': {},
-            'max_used_slot': model.NewIntVar(0, len(self.time_slots) - 1, "max_used_slot")
+            'room_penalty': {}, # cost variable, not decision variable
+            'max_used_slot': model.NewIntVar(0, len(self.time_slots) - 1, "max_used_slot") # from 0 to 53, 9 per day, needed to finish timetable ASAP in the week
         }
 
         print("   📊 Creating decision variables (efficient slot-aware creation)...")
@@ -194,25 +194,33 @@ class ConstraintBuilder:
         # CLASS VARIABLES (LECTURE / TUTORIAL / PRACTICAL)
         # ================================================================
         for subj in self.subjects:
+            # pprint(subj, sort_dicts=False)
+            # print("\n")
             event_id = self._get_event_id(subj)
             clean_id = event_id.replace("-", "_").replace(" ", "_").replace(".", "")
+            # print(clean_id)
 
             # Allowed slots
             if subj.get("Is_GE_Lab", False):
                 lecture_tutorial_slots = self._get_allowed_slots_for_subject(subj)
                 practical_slots = self._get_allowed_slots_for_ge_practical(subj["Semester"])
+                # print("Lecture Slots: ", lecture_tutorial_slots)
+                # print("Practical Slots: ", practical_slots, "\n")
             else:
                 allowed_slots = self._get_allowed_slots_for_subject(subj)
                 lecture_tutorial_slots = allowed_slots
                 practical_slots = allowed_slots
+                # print("Lecture Slots: ", lecture_tutorial_slots)
+                # print("Practical Slots: ", practical_slots, "\n")
 
             # ---------------- LECTURES ----------------
             if subj["Taught_Lecture_hours"] > 0:
                 for t in lecture_tutorial_slots:
                     key = (event_id, t)
-                    if key not in variables['lecture']:
+                    if key not in variables['lecture']: # Only one variable per unique event per slot
                         var_name = f"lec_{clean_id}_{t}"
-                        variables['lecture'][key] = model.NewBoolVar(var_name)
+                        variables['lecture'][key] = model.NewBoolVar(var_name) # Creating a new decision variable
+                        # pprint(variables['lecture'], sort_dicts=False)
                         lecture_count += 1
 
             # ---------------- TUTORIALS ----------------
@@ -355,7 +363,12 @@ class ConstraintBuilder:
                         variables['room_penalty'][key_under] = model.NewIntVar(
                             0, 1000, f"penalty_under_prac_{clean_id}_{t}"
                         )
-
+                        
+        #Basic usage of the 3 for loops in this method:
+        # lecture[(event, t)] → happens?
+        # room_assignment[(event, t, room)] → where?
+        # room_penalty[(event, t)] → how good?
+        
         print(f"      • Lectures: {lecture_count}")
         print(f"      • Tutorials: {tutorial_count}")
         print(f"      • Practicals: {practical_count}")
