@@ -7,9 +7,11 @@ from typing import List, Dict, Tuple
 from collections import defaultdict
 
 class FeasibilityChecker:
-    def __init__(self, subjects: List[Dict], room_capacities: Dict):
+    def __init__(self, subjects: List[Dict], room_capacities: Dict, teacher_ranks: Dict = None):
         self.subjects = subjects
         self.room_capacities = room_capacities
+        # full_name -> rank (lowercase). Missing names fall back to default.
+        self.teacher_ranks = teacher_ranks or {}
         self.issues = []
         self.warnings = []
         self.stats = {}
@@ -22,11 +24,16 @@ class FeasibilityChecker:
         print("\n🔍 PRE-SOLVER FEASIBILITY CHECK")
         print("=" * 70)
         
-        # Run all checks
+        # Run all checks. _check_vac_slot_availability runs first so that a
+        # subject in a year whose fixed slots aren't configured is reported
+        # with a clear message before any other (less specific) issue piles
+        # on top of it.
+        self._check_vac_slot_availability()
         self._check_teacher_workload()
         self._check_fixed_slot_capacity()
         self._check_room_capacity()
         self._check_practical_slots()
+        self._check_room_penalty_bounds()
         self._calculate_statistics()
         
         # Determine feasibility
@@ -88,36 +95,41 @@ class FeasibilityChecker:
                     "split": False
                 })
         
-        # Display results
+        # Display results — cap is per-teacher based on rank
         overloaded_teachers = []
         for teacher, data in sorted(teacher_loads.items(), key=lambda x: x[1]["total"], reverse=True):
-            if data["total"] > Config.MAX_HOURS_PER_TEACHER:
-                overloaded_teachers.append((teacher, data["total"], data["subjects"]))
+            rank = self.teacher_ranks.get(teacher, Config.DEFAULT_TEACHER_RANK)
+            cap = Config.get_teacher_hour_cap(rank)
+            rank_label = rank.title()
+
+            if data["total"] > cap:
+                overloaded_teachers.append((teacher, data["total"], data["subjects"], rank_label, cap))
                 self.issues.append(
-                    f"❌ TEACHER OVERLOAD: {teacher} has {data['total']:.1f} hours "
-                    f"(limit: {Config.MAX_HOURS_PER_TEACHER} hours)"
+                    f"❌ TEACHER OVERLOAD: {teacher} ({rank_label}) has "
+                    f"{data['total']:.1f} hours (cap: {cap} hours for {rank_label})"
                 )
-                print(f"   ❌ {teacher}: {data['total']:.1f}/{Config.MAX_HOURS_PER_TEACHER} hours")
+                print(f"   ❌ {teacher} ({rank_label}, cap {cap}h): {data['total']:.1f}/{cap} hours")
                 print(f"      Subjects:")
                 for s in data["subjects"]:
                     split_note = " (split)" if s.get("split") else ""
                     print(f"        - {s['subject']} [{s['course_sem']}]: {s['hours']:.1f}h{split_note}")
-            elif data["total"] >= Config.MAX_HOURS_PER_TEACHER * 0.9:
+            elif data["total"] >= cap * 0.9:
                 # 90-100% is GOOD (near optimal), not a warning!
-                print(f"   ✅ {teacher}: {data['total']:.1f}/{Config.MAX_HOURS_PER_TEACHER} hours (near optimal)")
-            elif data["total"] < Config.MAX_HOURS_PER_TEACHER * 0.8:
-                # Below 80% should be flagged for potential assignment
+                print(f"   ✅ {teacher} ({rank_label}, cap {cap}h): {data['total']:.1f}/{cap} hours (near optimal)")
+            elif data["total"] < cap * 0.8:
                 self.warnings.append(
-                    f"⚠️  {teacher} underutilized: {data['total']:.1f}/{Config.MAX_HOURS_PER_TEACHER} hours (could take more)"
+                    f"⚠️  {teacher} ({rank_label}) underutilized: "
+                    f"{data['total']:.1f}/{cap} hours (could take more)"
                 )
-                print(f"   ⚠️  {teacher}: {data['total']:.1f}/{Config.MAX_HOURS_PER_TEACHER} hours (underutilized)")
+                print(f"   ⚠️  {teacher} ({rank_label}, cap {cap}h): {data['total']:.1f}/{cap} hours (underutilized)")
             else:
-                print(f"   ✅ {teacher}: {data['total']:.1f}/{Config.MAX_HOURS_PER_TEACHER} hours")
-        
+                print(f"   ✅ {teacher} ({rank_label}, cap {cap}h): {data['total']:.1f}/{cap} hours")
+
         self.stats["teacher_loads"] = dict(teacher_loads)
-        
+
         if overloaded_teachers:
-            print(f"\n   💡 SOLUTION: Reassign subjects from overloaded teachers or increase MAX_HOURS_PER_TEACHER")
+            print(f"\n   💡 SOLUTION: Reassign subjects from overloaded teachers, "
+                  f"upgrade their rank, or adjust Config.TEACHER_RANK_HOUR_CAPS.")
     
     def _check_fixed_slot_capacity(self):
         """Check if GE/SEC/VAC/AEC subjects fit in their fixed slots"""
@@ -369,6 +381,98 @@ class FeasibilityChecker:
             "capacity": total_pair_capacity
         }
     
+    def _check_room_penalty_bounds(self):
+        """
+        Catch the case where a class's student count is so far from any candidate
+        room/lab capacity that the resulting penalty would exceed the bound on
+        the room_penalty IntVar — a structural infeasibility the solver detects
+        only at presolve as 'linear: never in domain'.
+
+        Mirrors the bound math in ConstraintBuilder._add_room_fit_penalties and
+        _add_lab_fit_penalties so a violation here predicts a UNSAT model.
+        """
+        print("\n📊 Checking Room Penalty Bounds (penalty IntVar overflow)...")
+
+        bound = Config.PENALTY_VAR_MAX
+        w_under = Config.PENALTY_WEIGHTS["undersized_room"]
+        w_over = Config.PENALTY_WEIGHTS["oversized_room"]
+
+        # Build per-department lab list once
+        labs_by_dept = {
+            dept: [
+                (name, info) for name, info in Config.ROOMS.items()
+                if info["type"] == "lab" and info.get("department") == dept
+            ]
+            for dept in {s["Department"] for s in self.subjects}
+        }
+        classrooms = [
+            (name, info) for name, info in Config.ROOMS.items()
+            if info["type"] == "classroom"
+        ]
+
+        violations_lab = []
+        violations_room = []
+
+        for s in self.subjects:
+            students = s.get("Students_count", 0)
+            if students <= 0:
+                continue
+
+            # ---- Practical / lab side -----------------------------------------
+            if s.get("Practical_hours", 0) > 0:
+                dept_labs = labs_by_dept.get(s["Department"], [])
+                if dept_labs:
+                    # Per _add_lab_fit_penalties: cap range = [cap_max - 3, cap_max + 3]
+                    min_overflow = min(
+                        max(0, students - (info["capacity_max"] + 3))
+                        for _, info in dept_labs
+                    )
+                    if min_overflow * w_under > bound:
+                        violations_lab.append(
+                            (s, students, dept_labs, min_overflow, min_overflow * w_under)
+                        )
+
+            # ---- Lecture / classroom side -------------------------------------
+            if s.get("Lecture_hours", 0) > 0 or s.get("Tutorial_hours", 0) > 0:
+                # Pick the best (smallest non-zero) room overflow OR oversized
+                best_under = min(
+                    max(0, students - info["capacity_max"]) for _, info in classrooms
+                )
+                best_over = min(
+                    max(0, info["capacity_min"] - students) for _, info in classrooms
+                )
+                penalty = max(best_under * w_under, best_over * w_over)
+                if penalty > bound:
+                    violations_room.append((s, students, penalty))
+
+        if not violations_lab and not violations_room:
+            print(f"   ✅ All room/lab penalties stay within IntVar bound ({bound:,})")
+            return
+
+        for s, students, dept_labs, overflow, pen in violations_lab:
+            cap_max = max(info["capacity_max"] for _, info in dept_labs)
+            self.issues.append(
+                f"❌ LAB OVERFLOW: '{s['Subject']}' [{s['Course_Semester']}] has "
+                f"{students} students, but the largest available {s['Department']} lab "
+                f"holds only {cap_max} (+3 tolerance). Min overflow {overflow} × penalty "
+                f"weight {w_under} = {pen:,}, which exceeds the room_penalty IntVar bound "
+                f"of {bound:,}. The solver will return INFEASIBLE at presolve "
+                f"('linear: never in domain'). Fix: split the section, add a larger lab, "
+                f"or raise Config.PENALTY_VAR_MAX above {pen:,}."
+            )
+            print(f"   ❌ {s['Subject']} [{s['Course_Semester']}]: {students} students vs "
+                  f"max lab cap {cap_max}+3 → penalty {pen:,} > bound {bound:,}")
+
+        for s, students, pen in violations_room:
+            self.issues.append(
+                f"❌ ROOM PENALTY OVERFLOW: '{s['Subject']}' [{s['Course_Semester']}] "
+                f"with {students} students would incur penalty {pen:,} > IntVar bound "
+                f"{bound:,}. Solver will fail at presolve. Fix: adjust class size, add "
+                f"appropriately-sized rooms, or raise Config.PENALTY_VAR_MAX."
+            )
+            print(f"   ❌ {s['Subject']} [{s['Course_Semester']}]: {students} students → "
+                  f"penalty {pen:,} > bound {bound:,}")
+
     def _calculate_statistics(self):
         """Calculate overall statistics"""
         # Total hours
@@ -386,7 +490,52 @@ class FeasibilityChecker:
             "total_hours": total_hours,
             "by_type": dict(by_type)
         }
-    
+
+    def _check_vac_slot_availability(self):
+        """
+        For every fixed-slot subject (VAC/GE/SEC/AEC), confirm Config has at
+        least one allowed time slot for its semester. Otherwise the constraint
+        builder would later raise inside _add_hour_requirements — surfacing
+        the failure here keeps the frontend progress bar lighting up the
+        Feasibility Check (Step 2) red, rather than the deeper Build-Model
+        (Step 3) which is much harder to diagnose.
+
+        Mirrors the slot-resolution code in ConstraintBuilder
+        ._get_allowed_slots_for_subject() so the two stay in sync.
+        """
+        print("\n📊 Checking Fixed-Slot Availability (VAC/GE/SEC/AEC)...")
+        fixed_slot_types = ("VAC", "GE", "SEC", "AEC")
+        violations = 0
+
+        for s in self.subjects:
+            stype = s.get("Subject_type")
+            if stype not in fixed_slot_types:
+                continue
+            sem = s.get("Semester")
+            if sem is None:
+                continue
+
+            # Config.get_fixed_slot_indices ignores `semester` for GE/AEC
+            # (those are universal across years) and uses it for VAC/SEC.
+            allowed = Config.get_fixed_slot_indices(stype, sem)
+            if allowed:
+                continue
+
+            violations += 1
+            cs = s.get("Course_Semester") or f"{stype} Sem{sem}"
+            subj_name = s.get("Subject") or "(unnamed)"
+            self.issues.append(
+                f"❌ {stype} SLOT ERROR: '{subj_name}' [{cs}] has no allowed "
+                f"time slots configured for Semester {sem}. "
+                f"VAC/SEC/GE/AEC subjects are only supported for Semesters 1–4. "
+                f"Either remove this subject or add slot configuration for "
+                f"Sem{sem} in Config.FIXED_SLOTS."
+            )
+            print(f"   ❌ {stype} '{subj_name}' [{cs}]: 0 slots for Sem{sem}")
+
+        if violations == 0:
+            print("   ✅ All fixed-slot subjects have configured slots")
+
     def print_summary(self):
         """Print summary of feasibility check"""
         print("\n" + "=" * 70)

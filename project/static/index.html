@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Timetable Generator</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="app">
+  <!-- ============================================================
+       TOP BAR
+       ============================================================ -->
+  <header class="topbar" role="banner">
+    <div class="brand">
+      <span class="brand-icon" aria-hidden="true">🎓</span>
+      <span class="brand-title">Timetable Generator</span>
+    </div>
+    <div class="topbar-right">
+      <span id="college-name" class="college-chip" title="Configured college">—</span>
+      <span id="save-status" class="save-status" aria-live="polite"></span>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       SIDEBAR NAV
+       ============================================================ -->
+  <aside class="sidebar" role="navigation" aria-label="Main navigation">
+    <button class="nav-item active" data-section="dashboard"     type="button">
+      <span class="nav-icon" aria-hidden="true">🏠</span>
+      <span class="nav-label">Dashboard</span>
+    </button>
+    <button class="nav-item"        data-section="teachers"      type="button">
+      <span class="nav-icon" aria-hidden="true">👥</span>
+      <span class="nav-label">Teachers</span>
+    </button>
+    <button class="nav-item"        data-section="subjects"      type="button">
+      <span class="nav-icon" aria-hidden="true">📚</span>
+      <span class="nav-label">Subjects</span>
+    </button>
+    <button class="nav-item"        data-section="configuration" type="button">
+      <span class="nav-icon" aria-hidden="true">⚙️</span>
+      <span class="nav-label">Configuration</span>
+    </button>
+    <button class="nav-item"        data-section="preferences"   type="button">
+      <span class="nav-icon" aria-hidden="true">🌓</span>
+      <span class="nav-label">Preferences</span>
+    </button>
+    <button class="nav-item"        data-section="generate"      type="button">
+      <span class="nav-icon" aria-hidden="true">▶</span>
+      <span class="nav-label">Generate</span>
+    </button>
+    <button class="nav-item"        data-section="results"       type="button">
+      <span class="nav-icon" aria-hidden="true">📋</span>
+      <span class="nav-label">Results</span>
+    </button>
+  </aside>
+
+  <!-- ============================================================
+       MAIN
+       ============================================================ -->
+  <main class="main" role="main">
+
+    <!-- ====== Dashboard (default view) ====== -->
+    <section id="dashboard" class="section active">
+      <h2>Dashboard</h2>
+      <p class="hint">Overview of your saved configuration. Edit data on the
+        Teachers, Subjects, and Configuration tabs, then click Generate.</p>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-label">Total Teachers</div>
+          <div class="card-value" id="card-teachers">0</div>
+          <div class="card-sub" id="card-teachers-sub">no teachers yet</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Total Subjects</div>
+          <div class="card-value" id="card-subjects">0</div>
+          <div class="card-sub" id="card-subjects-sub">no subjects yet</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Last Generated</div>
+          <div class="card-value" id="card-last">Never</div>
+          <div class="card-sub" id="card-last-sub">no run on record</div>
+        </div>
+      </div>
+
+      <button class="cta-big" id="dash-go" type="button">▶ Generate Timetable</button>
+    </section>
+
+    <!-- ====== Teachers ====== -->
+    <section id="teachers" class="section">
+      <h2>Teachers</h2>
+      <p class="hint">Initials must be unique. Rank determines the weekly hour cap.</p>
+      <table id="teachers-table" class="data-table">
+        <thead><tr>
+          <th>Full Name</th><th>Initials</th><th>Rank</th><th>Department</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row-controls">
+        <button id="add-teacher" type="button">+ Add Teacher</button>
+        <button id="save-teachers" class="primary" type="button">💾 Save Teachers</button>
+      </div>
+    </section>
+
+    <!-- ====== Subjects ====== -->
+    <section id="subjects" class="section">
+      <h2>Subjects</h2>
+      <p class="hint">
+        <code>Hours</code> is <code>Le,Tu,Pr</code> (e.g. <code>3,0,2</code>).
+        Use <code>|</code> in <em>Teacher</em> + <em>Hours</em> for split teaching
+        (<code>Alice | Bob</code> + <code>1,0,1 | 2,0,1</code>);
+        use <code>,</code> for co-teaching.
+      </p>
+      <div class="table-scroll">
+        <table id="subjects-table" class="data-table">
+          <thead><tr>
+            <th>Course</th><th>Sem</th><th>Subject</th><th>Section</th>
+            <th>Teacher(s)</th><th>Hours</th><th>Department</th>
+            <th>Type</th><th>Lab?</th><th>Notes</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="row-controls">
+        <button id="add-subject" type="button">+ Add Subject</button>
+        <button id="save-subjects" class="primary" type="button">💾 Save Subjects</button>
+      </div>
+    </section>
+
+    <!-- ====== Configuration (Settings + Preferences merged) ====== -->
+    <section id="configuration" class="section">
+      <h2>Configuration</h2>
+
+      <!-- ---- Institution / solver settings ---- -->
+      <h3 class="sub-h">Institution &amp; Solver Settings</h3>
+      <form id="settings-form" class="form-grid" autocomplete="off">
+        <fieldset>
+          <legend>College</legend>
+          <label>Name <input type="text" name="college.name" /></label>
+          <label>Department <input type="text" name="college.department" /></label>
+          <label>Academic Year <input type="text" name="college.academic_year" placeholder="2024-2025" /></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Semester</legend>
+          <label>Type
+            <select name="semester_type">
+              <option value="odd">Odd (1, 3, 5, 7)</option>
+              <option value="even">Even (2, 4, 6, 8)</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Teacher Hour Caps (per rank, hours/week)</legend>
+          <label>Assistant <input type="number" name="rank_caps.assistant"  min="1" max="40" /></label>
+          <label>Associate <input type="number" name="rank_caps.associate"  min="1" max="40" /></label>
+          <label>Professor <input type="number" name="rank_caps.professor"  min="1" max="40" /></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Solver</legend>
+          <label>Time limit (seconds) <input type="number" name="solver_time_limit_seconds" min="10" max="3600" /></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Optional Constraints</legend>
+          <label class="chk"><input type="checkbox" name="constraints.practical_consecutive" />     Practicals in 2-hour blocks</label>
+          <label class="chk"><input type="checkbox" name="constraints.max_consecutive_classes" />   Limit consecutive classes</label>
+          <label class="chk"><input type="checkbox" name="constraints.max_daily_hours" />           Limit student daily hours</label>
+          <label class="chk"><input type="checkbox" name="constraints.max_daily_teacher_hours" />   Limit teacher daily hours</label>
+          <label class="chk"><input type="checkbox" name="constraints.early_completion" />          Prefer early-day finish</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Limits (only if the constraint is enabled)</legend>
+          <label>Max consecutive classes <input type="number" name="limits.max_consecutive_classes" min="1" max="9" /></label>
+          <label>Max student daily hours <input type="number" name="limits.max_daily_hours"          min="1" max="9" /></label>
+          <label>Max teacher daily hours <input type="number" name="limits.max_daily_teacher_hours"  min="1" max="9" /></label>
+        </fieldset>
+      </form>
+      <button id="save-settings" class="primary" type="button">💾 Save Settings</button>
+    </section>
+
+    <!-- ====== Preferences (soft constraints) ====== -->
+    <section id="preferences" class="section">
+      <h2>Teacher Preferences <span class="muted">(optional, soft constraints)</span></h2>
+      <p class="hint">
+        Pick teachers from the existing list; their off days, preferred time,
+        and avoid time are pure preferences — they shape the objective but
+        can never make the timetable infeasible.
+      </p>
+      <table id="preferences-table" class="data-table">
+        <thead><tr>
+          <th>Teacher</th>
+          <th>Off Days</th>
+          <th>Preferred Time</th>
+          <th>Avoid Time</th>
+          <th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row-controls">
+        <button id="add-preference" type="button">+ Add Preference</button>
+        <button id="save-preferences" class="primary" type="button">💾 Save Preferences</button>
+      </div>
+    </section>
+
+    <!-- ====== Generate ====== -->
+    <section id="generate" class="section">
+      <h2>Generate Timetable</h2>
+      <p class="hint">
+        Two stages: build <code>inputs/generated_input.xlsx</code> from your
+        saved data, then run the solver. Logs stream live below.
+      </p>
+
+      <div class="checklist" id="checklist">
+        <h3 class="checklist-title">Pre-flight Checks</h3>
+        <ul id="checklist-items" class="checklist-items"></ul>
+      </div>
+
+      <!-- Two-stage controls -->
+      <div class="generate-stage">
+        <div class="stage-step">
+          <button id="build-excel-btn" class="primary" type="button" disabled>
+            📑 Build Excel from Config
+          </button>
+          <span id="build-status" class="stage-status muted">not built yet</span>
+        </div>
+        <div class="stage-arrow" aria-hidden="true">→</div>
+        <div class="stage-step">
+          <button id="run-solver-btn" class="primary big" type="button" disabled>
+            ▶ Run Solver
+          </button>
+          <span id="solver-status" class="stage-status muted">idle</span>
+        </div>
+      </div>
+
+      <!-- Step progress bar -->
+      <div class="progress-bar" id="progress-bar" aria-label="Solver progress">
+        <div class="progress-step" data-step="load">
+          <span class="step-icon">1</span>
+          <span class="step-label">Load Data</span>
+        </div>
+        <div class="progress-link"></div>
+        <div class="progress-step" data-step="feasibility">
+          <span class="step-icon">2</span>
+          <span class="step-label">Feasibility Check</span>
+        </div>
+        <div class="progress-link"></div>
+        <div class="progress-step" data-step="build">
+          <span class="step-icon">3</span>
+          <span class="step-label">Build Model</span>
+        </div>
+        <div class="progress-link"></div>
+        <div class="progress-step" data-step="solve">
+          <span class="step-icon">4</span>
+          <span class="step-label">Solve</span>
+        </div>
+        <div class="progress-link"></div>
+        <div class="progress-step" data-step="outputs">
+          <span class="step-icon">5</span>
+          <span class="step-label">Generate Outputs</span>
+        </div>
+      </div>
+
+      <!-- Error alert (shown only on failure) -->
+      <div id="error-alert" class="error-alert hidden" role="alert">
+        <strong>❌ Solver failed</strong>
+        <pre id="error-text"></pre>
+      </div>
+
+      <!-- Live log -->
+      <pre id="run-log" class="log" aria-live="polite"></pre>
+
+      <!-- Success banner (shown only on success) -->
+      <div id="success-banner" class="success-banner hidden" role="status">
+        <span>✅ Timetable generated successfully</span>
+        <button id="view-results-btn" class="primary" type="button">📋 View Results</button>
+      </div>
+
+      <!-- Downloads (after successful solve) -->
+      <div id="run-downloads" class="downloads hidden">
+        <a id="dl-zip"   href="/api/download/zip">⬇ Download all (zip)</a>
+        <a id="dl-excel" href="/api/download/excel">⬇ Download master Excel</a>
+      </div>
+    </section>
+
+    <!-- ====== Results ====== -->
+    <section id="results" class="section">
+      <h2>Results</h2>
+
+      <!-- Empty state (shown when no solution is cached) -->
+      <div id="results-empty" class="empty-state">
+        <div class="empty-state-icon" aria-hidden="true">📋</div>
+        <p>No timetable generated yet — run the solver first.</p>
+        <button id="results-go-generate" class="primary" type="button">▶ Go to Generate</button>
+      </div>
+
+      <!-- Content (shown when /api/results returns a solution) -->
+      <div id="results-content" class="hidden">
+
+        <!-- Sub-tabs: Teacher / Room / Course -->
+        <div class="results-tabs" role="tablist">
+          <button class="result-tab active" data-rtab="teacher" type="button">Teacher Timetables</button>
+          <button class="result-tab"        data-rtab="room"    type="button">Room Timetables</button>
+          <button class="result-tab"        data-rtab="course"  type="button">Course Timetables</button>
+        </div>
+
+        <div class="results-toolbar">
+          <label class="picker-label">View:
+            <select id="results-picker"></select>
+          </label>
+          <span id="results-meta" class="muted"></span>
+        </div>
+
+        <!-- The interactive grid lives here -->
+        <div id="results-grid"></div>
+
+        <!-- Downloads (deep link to backend file endpoints) -->
+        <div class="results-downloads">
+          <a id="dl-zip-results"   class="dl-btn primary" href="/api/download/zip">⬇ Download All PDFs + Excel (zip)</a>
+          <a id="dl-excel-results" class="dl-btn"          href="/api/download/excel">⬇ Download Master Excel</a>
+        </div>
+
+        <!-- Per-teacher preference satisfaction summary -->
+        <div class="results-prefs">
+          <h3 class="sub-h">Teacher Preference Summary</h3>
+          <table id="results-prefs-table" class="data-table">
+            <thead><tr>
+              <th>Teacher</th>
+              <th>Rank</th>
+              <th>Scheduled Hours</th>
+              <th>Cap</th>
+              <th>Satisfaction</th>
+              <th>Violations</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="/static/api.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

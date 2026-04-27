@@ -507,12 +507,55 @@ class Config:
     "theory_in_lab": 100,         # Penalty for using labs for theory classes
     }
 
+    # Upper bound for room-penalty IntVars. Must be >= max possible overflow * weight.
+    # Worst realistic case: ~200 students in a 20-capacity room => overflow 180 * 100 = 18000.
+    # 1_000_000 leaves a wide safety margin without hurting solver performance.
+    PENALTY_VAR_MAX = 1_000_000
+
+    # Soft-constraint weights for teacher time preferences. Tuned to sit above
+    # the routine soft constraints (theory_in_lab=100, isolated_practical=50,
+    # ge_lecture_slot_usage=30, day_idx*18 early-completion) so they actually
+    # shift scheduling, but well below worst-case undersized_room penalties
+    # (overflow * 100 = thousands) so a real room-fit conflict still wins and
+    # preferences NEVER cause INFEASIBLE. Adjust here, not in builder code.
+    TEACHER_PREF_WEIGHTS = {
+        "off_day":             200,   # per scheduled hour on a teacher's preferred-off day
+        "avoid_time":          150,   # per scheduled hour in their avoid-time window
+        "preferred_time_bonus": 50,   # subtracted per scheduled hour in their preferred window
+    }
+
+    # Per-day slot-index ranges for preference time labels. Indices are
+    # offsets within a day (0..len(slots)-1), keyed off the existing time grid.
+    PREFERRED_TIME_SLOTS = {
+        "Morning":   [0, 1, 2],         # 8:30 – 11:30
+        "Afternoon": [3, 4, 5, 6],      # 11:30 – 15:30
+        "Evening":   [7, 8],            # 15:30 – 17:30
+    }
+
+    # Day-name normalization (case-insensitive); both short and long forms accepted.
+    DAY_NAME_TO_INDEX = {
+        "mon": 0, "monday": 0,
+        "tue": 1, "tues": 1, "tuesday": 1,
+        "wed": 2, "wednesday": 2,
+        "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
+        "fri": 4, "friday": 4,
+        "sat": 5, "saturday": 5,
+    }
+
     
     # Teacher-student ratio for labs (1 teacher per X students)
     LAB_TEACHER_RATIO = 20
     
-    # Constraint settings
-    MAX_HOURS_PER_TEACHER = 16
+    # Per-rank teaching-hour caps. Replaces the former single
+    # MAX_HOURS_PER_TEACHER constant — every consumer must look up the cap
+    # for the teacher's specific rank via get_teacher_hour_cap().
+    TEACHER_RANK_HOUR_CAPS = {
+        "assistant": 16,
+        "associate": 16,
+        "professor": 16,
+    }
+    DEFAULT_TEACHER_RANK = "assistant"
+
     SOLVER_TIME_LIMIT = 300
     
     # PDF settings
@@ -653,8 +696,23 @@ class Config:
     @classmethod
     def get_labs_by_department(cls, department: str) -> list:
         """Get all labs for a specific department"""
-        return [name for name, info in cls.ROOMS.items() 
+        return [name for name, info in cls.ROOMS.items()
                 if info["type"] == "lab" and info.get("department") == department]
+
+    @classmethod
+    def get_teacher_hour_cap(cls, rank: str) -> int:
+        """
+        Resolve a teacher's weekly hour cap by rank. Rank is normalized to
+        lowercase; unknown ranks raise ValueError so callers don't silently
+        drop a cap when data drifts.
+        """
+        normalized = (rank or "").strip().lower()
+        if normalized not in cls.TEACHER_RANK_HOUR_CAPS:
+            raise ValueError(
+                f"Unknown teacher rank '{rank}'. "
+                f"Allowed: {list(cls.TEACHER_RANK_HOUR_CAPS.keys())}"
+            )
+        return cls.TEACHER_RANK_HOUR_CAPS[normalized]
         
     @classmethod
     def get_subject_requirement(cls, subject_type: str, has_lab: bool) -> Dict[str, int]:

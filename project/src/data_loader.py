@@ -16,28 +16,227 @@ class DataLoader:
         self.subjects = []
         self.semester_type = None
         self.teacher_initials = {}  # Full name -> Initials mapping
-        
+        self.teacher_ranks = {}     # Full name -> rank (lowercase, one of TEACHER_RANK_HOUR_CAPS keys)
+        # Soft-only: initials -> {"off_days": [day_idx,...],
+        #                         "preferred_slots": [in-day slot idx,...],
+        #                         "avoid_slots":     [in-day slot idx,...]}
+        self.teacher_preferences = {}
+
     def load_data(self) -> bool:
-        """Load data from Excel file (both sheets)"""
+        """Load data from Excel file (Subjects + Teachers, plus optional Teacher Preferences)."""
         try:
             # Load main subjects sheet
             self.df = pd.read_excel(self.excel_file, sheet_name="Subjects")
             print(f"✅ Loaded {len(self.df)} rows from Subjects sheet")
-            
+
             # Load teachers sheet
             self.df_teachers = pd.read_excel(self.excel_file, sheet_name="Teachers")
             print(f"✅ Loaded {len(self.df_teachers)} teachers from Teachers sheet")
-            
-            # Build teacher initials mapping
-            for _, row in self.df_teachers.iterrows():
+
+            # Validate the Teachers sheet BEFORE building the initials map so a
+            # partial / inconsistent map can't leak into downstream processing.
+            self._validate_teachers_sheet()
+
+            from src.config import Config
+            has_rank_col = "Rank" in self.df_teachers.columns
+            missing_rank_warned = False
+
+            for idx, row in self.df_teachers.iterrows():
                 full_name = str(row["Full Name"]).strip()
                 initials = str(row["Initials"]).strip()
                 self.teacher_initials[full_name] = initials
-            
+
+                # Rank column is optional; if absent, every teacher defaults to
+                # Assistant. If present but blank for an individual row, warn
+                # per teacher so the user notices unintentional gaps.
+                rank = Config.DEFAULT_TEACHER_RANK
+                if has_rank_col:
+                    raw = row.get("Rank")
+                    if pd.isna(raw) or not str(raw).strip():
+                        print(f"⚠️  Teacher '{full_name}' (row {idx + 2}) has no Rank — "
+                              f"defaulting to {Config.DEFAULT_TEACHER_RANK.title()} "
+                              f"({Config.TEACHER_RANK_HOUR_CAPS[Config.DEFAULT_TEACHER_RANK]}h cap)")
+                    else:
+                        rank = str(raw).strip().lower()
+                self.teacher_ranks[full_name] = rank
+
+            if not has_rank_col:
+                print(f"⚠️  Teachers sheet has no 'Rank' column — all {len(self.teacher_ranks)} "
+                      f"teachers default to {Config.DEFAULT_TEACHER_RANK.title()} "
+                      f"({Config.TEACHER_RANK_HOUR_CAPS[Config.DEFAULT_TEACHER_RANK]}h cap)")
+
+            # Optional Teacher Preferences sheet — pure soft constraints, never
+            # raise infeasibility, silently skipped if the sheet doesn't exist.
+            self._load_teacher_preferences()
+
             return True
         except Exception as e:
             print(f"❌ Error loading data: {e}")
             return False
+
+    def _load_teacher_preferences(self):
+        """
+        Parse the optional 'Teacher Preferences' sheet. Absent sheet or absent
+        teacher rows → silent skip (preferences are soft-only).
+        """
+        try:
+            df_prefs = pd.read_excel(self.excel_file, sheet_name="Teacher Preferences")
+        except Exception:
+            return  # sheet not present — fine
+
+        if df_prefs.empty:
+            return
+
+        from src.config import Config
+
+        # Tolerate extra/missing optional cols; only "Full Name" is mandatory
+        # to identify the teacher. Missing per-row fields are treated as "no
+        # preference of that kind".
+        if "Full Name" not in df_prefs.columns:
+            raise ValueError(
+                "Teacher Preferences sheet is missing 'Full Name' column. "
+                "Expected columns: Full Name, Off Days, Preferred Time, Avoid Time."
+            )
+
+        # Track unknown names to surface as a single error message — common typo.
+        unknown_names = []
+
+        for idx, row in df_prefs.iterrows():
+            row_no = idx + 2  # excel row number with header
+            name_raw = row.get("Full Name")
+            if pd.isna(name_raw):
+                continue
+            full_name = str(name_raw).strip()
+            if not full_name:
+                continue
+
+            if full_name not in self.teacher_initials:
+                unknown_names.append((row_no, full_name))
+                continue
+
+            initials = self.teacher_initials[full_name]
+            entry = {"off_days": [], "preferred_slots": [], "avoid_slots": []}
+
+            # Off Days
+            off_raw = row.get("Off Days")
+            if not pd.isna(off_raw) and str(off_raw).strip():
+                for token in str(off_raw).split(","):
+                    token = token.strip().lower()
+                    if not token:
+                        continue
+                    if token not in Config.DAY_NAME_TO_INDEX:
+                        raise ValueError(
+                            f"Teacher Preferences row {row_no}: unknown day '{token}' "
+                            f"in 'Off Days'. Use Mon/Tue/.../Sat or Monday/Tuesday/...."
+                        )
+                    entry["off_days"].append(Config.DAY_NAME_TO_INDEX[token])
+
+            # Preferred Time
+            pref_raw = row.get("Preferred Time")
+            if not pd.isna(pref_raw) and str(pref_raw).strip():
+                label = str(pref_raw).strip().title()  # "morning" -> "Morning"
+                if label not in Config.PREFERRED_TIME_SLOTS:
+                    raise ValueError(
+                        f"Teacher Preferences row {row_no}: unknown 'Preferred Time' "
+                        f"label '{pref_raw}'. Allowed: {list(Config.PREFERRED_TIME_SLOTS.keys())}."
+                    )
+                entry["preferred_slots"] = list(Config.PREFERRED_TIME_SLOTS[label])
+
+            # Avoid Time
+            avoid_raw = row.get("Avoid Time")
+            if not pd.isna(avoid_raw) and str(avoid_raw).strip():
+                label = str(avoid_raw).strip().title()
+                if label not in Config.PREFERRED_TIME_SLOTS:
+                    raise ValueError(
+                        f"Teacher Preferences row {row_no}: unknown 'Avoid Time' "
+                        f"label '{avoid_raw}'. Allowed: {list(Config.PREFERRED_TIME_SLOTS.keys())}."
+                    )
+                entry["avoid_slots"] = list(Config.PREFERRED_TIME_SLOTS[label])
+
+            # Skip rows that contributed no preferences after parsing
+            if entry["off_days"] or entry["preferred_slots"] or entry["avoid_slots"]:
+                self.teacher_preferences[initials] = entry
+
+        if unknown_names:
+            details = "; ".join(f"row {n} ('{nm}')" for n, nm in unknown_names)
+            raise ValueError(
+                f"Teacher Preferences references unknown teacher(s): {details}. "
+                f"Full Name must match Teachers sheet exactly."
+            )
+
+        if self.teacher_preferences:
+            print(f"✅ Loaded preferences for {len(self.teacher_preferences)} teacher(s)")
+
+    def _validate_teachers_sheet(self):
+        """
+        Enforce that every teacher row has non-blank initials and that no two
+        teachers share the same initials. Raised early — before model building —
+        so the user gets immediate, actionable feedback instead of a confusing
+        downstream error (split-teaching event IDs and several constraints key
+        off initials, so duplicates would silently merge teachers' constraints).
+        """
+        required_cols = ["Full Name", "Initials"]
+        missing = [c for c in required_cols if c not in self.df_teachers.columns]
+        if missing:
+            raise ValueError(
+                f"Teachers sheet is missing required column(s): {missing}. "
+                f"Expected columns: {required_cols}."
+            )
+
+        # Blank / missing initials check
+        blank_rows = []
+        for idx, row in self.df_teachers.iterrows():
+            initials_raw = row["Initials"]
+            initials = "" if pd.isna(initials_raw) else str(initials_raw).strip()
+            full_name = "" if pd.isna(row["Full Name"]) else str(row["Full Name"]).strip()
+            if not initials or initials.lower() == "nan":
+                blank_rows.append((idx + 2, full_name or "<blank name>"))
+
+        if blank_rows:
+            details = "; ".join(f"row {n} (Full Name: '{name}')" for n, name in blank_rows)
+            raise ValueError(
+                f"Blank or missing Initials in Teachers sheet for: {details}. "
+                f"Every teacher must have a non-empty Initials value."
+            )
+
+        # Duplicate-initials check (case-sensitive: "MK" and "mk" treated as
+        # different on purpose, since the existing constraint code uses initials
+        # verbatim in event IDs).
+        from collections import defaultdict
+        names_by_initials = defaultdict(list)
+        for idx, row in self.df_teachers.iterrows():
+            initials = str(row["Initials"]).strip()
+            full_name = str(row["Full Name"]).strip()
+            names_by_initials[initials].append((idx + 2, full_name))
+
+        conflicts = {ini: rows for ini, rows in names_by_initials.items() if len(rows) > 1}
+        if conflicts:
+            lines = []
+            for ini, rows in conflicts.items():
+                names = ", ".join(f"'{name}' (row {n})" for n, name in rows)
+                lines.append(f"'{ini}' is used by {names}")
+            raise ValueError(
+                "Duplicate initials found: "
+                + "; ".join(lines)
+                + ". Initials must be unique across all teachers."
+            )
+
+        # Rank column is OPTIONAL: absent column → every teacher defaults to
+        # Assistant. Present column → each non-blank cell must be a valid rank.
+        if "Rank" in self.df_teachers.columns:
+            from src.config import Config
+            allowed = set(Config.TEACHER_RANK_HOUR_CAPS.keys())
+            for idx, row in self.df_teachers.iterrows():
+                raw = row.get("Rank")
+                if pd.isna(raw) or not str(raw).strip():
+                    continue  # blank handled with warning + default in load_data
+                normalized = str(raw).strip().lower()
+                if normalized not in allowed:
+                    full_name = str(row["Full Name"]).strip()
+                    raise ValueError(
+                        f"Unknown rank '{raw}' for teacher '{full_name}' (row {idx + 2}). "
+                        f"Must be one of: {', '.join(s.title() for s in allowed)}"
+                    )
     
     def validate_data(self) -> bool:
         """Validate the loaded data"""
@@ -617,7 +816,7 @@ class DataLoader:
                 if any(not s for s in sections):
                     # Some entries missing sections
                     row_nums = [e[1] + 2 for e in entries]  # Excel row numbers
-                    print(f"\nâŒ ERROR: Subject '{subject_name}' ({subject_type}) for {course} Sem{semester}")
+                    print(f"\n❌ ERROR: Subject '{subject_name}' ({subject_type}) for {course} Sem{semester}")
                     print(f"   appears {len(entries)} times (rows {row_nums})")
                     print(f"   All instances must have sections specified (A, B, C, etc.)")
                     raise ValueError("Missing sections for repeated subject")
@@ -762,7 +961,7 @@ class DataLoader:
                 
                 if co_teacher not in teacher_hours:
                     teacher_hours[co_teacher] = {"total": 0, "subjects": 0, "details": []}
-                
+
                 teacher_hours[co_teacher]["total"] += co_hours
                 teacher_hours[co_teacher]["subjects"] += 1
                 teacher_hours[co_teacher]["details"].append({
@@ -770,19 +969,6 @@ class DataLoader:
                     "course_sem": subj["Course_Semester"],
                     "hours": co_hours,
                     "split": False,  # Co-teaching is not split
-                    "merged": is_merged
-                })
-                
-                if co_teacher not in teacher_hours:
-                    teacher_hours[co_teacher] = {"total": 0, "subjects": 0, "details": []}
-                
-                teacher_hours[co_teacher]["total"] += co_hours
-                teacher_hours[co_teacher]["subjects"] += 1
-                teacher_hours[co_teacher]["details"].append({
-                    "subject": subj["Subject"],
-                    "course_sem": subj["Course_Semester"],
-                    "hours": co_hours,
-                    "split": subj.get("Is_Split_Teaching", False),
                     "merged": is_merged
                 })
         
@@ -1077,14 +1263,18 @@ class DataLoader:
             
             overloaded = []
             for teacher, data in sorted(teacher_hours.items(), key=lambda x: x[1]["total"], reverse=True):
-                status = "✅" if data["total"] <= Config.MAX_HOURS_PER_TEACHER else "❌"
-                print(f"      {status} {teacher}: {data['total']:.1f}/{Config.MAX_HOURS_PER_TEACHER}h ({data['subjects']} subjects)")
-                if data["total"] > Config.MAX_HOURS_PER_TEACHER:
+                rank = self.teacher_ranks.get(teacher, Config.DEFAULT_TEACHER_RANK)
+                cap = Config.get_teacher_hour_cap(rank)
+                status = "✅" if data["total"] <= cap else "❌"
+                print(f"      {status} {teacher} ({rank.title()}): "
+                      f"{data['total']:.1f}/{cap}h ({data['subjects']} subjects)")
+                if data["total"] > cap:
                     overloaded.append(teacher)
-            
+
             if overloaded:
                 print(f"\n      ⚠️  OVERLOADED TEACHERS: {len(overloaded)}")
-                print(f"         These teachers exceed {Config.MAX_HOURS_PER_TEACHER}h/week limit")
+                print(f"         These teachers exceed their per-rank cap "
+                      f"(see Config.TEACHER_RANK_HOUR_CAPS)")
             
             # Hours breakdown (accounting for merged courses)
             processed_merge_groups = set()

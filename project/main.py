@@ -110,7 +110,14 @@ def main():
     
     # Load or migrate configuration
     config_mgr = load_config_from_json_if_exists()
-    
+
+    # Apply YAML solver settings to Config so SolverEngine reads the
+    # user-configured value instead of the static default. Per-teacher hour
+    # caps come from Config.TEACHER_RANK_HOUR_CAPS (looked up by rank), so the
+    # legacy 'max_teacher_hours_per_week' YAML key (if present) is ignored.
+    Config.SOLVER_TIME_LIMIT = int(config_mgr.get(
+        'solver.time_limit_seconds', Config.SOLVER_TIME_LIMIT))
+
     # Handle --show-config flag
     if args.show_config:
         config_mgr.print_current_config()
@@ -157,7 +164,7 @@ def main():
     # Pass semester type to data loader
     semester_type = config_mgr.get('semester.type', 'odd')
     
-    data_loader = DataLoader("inputs/exceptions_input.xlsx")
+    data_loader = DataLoader("inputs/input3.xlsx")
     data_loader.semester_type = semester_type  # Set semester type before validation
     
     if not data_loader.validate_data():
@@ -195,7 +202,7 @@ def main():
     print("📋 STEP 1.5: PRE-SOLVER FEASIBILITY CHECK")
     print("-" * 70)
     
-    feasibility_checker = FeasibilityChecker(subjects, room_capacities)
+    feasibility_checker = FeasibilityChecker(subjects, room_capacities, data_loader.teacher_ranks)
     is_feasible, issues, warnings, stats = feasibility_checker.check_feasibility()
     # feasibility_checker.print_summary()
     
@@ -256,18 +263,25 @@ def main():
     print("-" * 70)
     
     constraint_builder = ConstraintBuilder(
-        subjects, teachers, rooms, course_semesters, 
+        subjects, teachers, rooms, course_semesters,
         room_capacities, constraint_adapter,
-        data_loader.teacher_initials
+        data_loader.teacher_initials,
+        data_loader.teacher_preferences,
+        data_loader.teacher_ranks,
     )
     model, variables = constraint_builder.build_model()
-    
+
     # Step 4: Solve the model
     print("\n" + "=" * 70)
     print("📋 STEP 4: SOLVING OPTIMIZATION PROBLEM")
     print("-" * 70)
-    
-    solver_engine = SolverEngine(model, variables, subjects, data_loader.teacher_initials)
+
+    solver_engine = SolverEngine(
+        model, variables, subjects,
+        data_loader.teacher_initials,
+        data_loader.teacher_preferences,
+        data_loader.teacher_ranks,
+    )
     solution = solver_engine.solve()
     
     if not solution:
@@ -302,7 +316,11 @@ def main():
     excel_generator.generate_master_timetable("output/master_timetable.xlsx")
     
     # Generate PDF timetables
-    pdf_generator = PDFGenerator(solution, subjects, teachers, rooms, course_semesters)
+    pdf_generator = PDFGenerator(
+        solution, subjects, teachers, rooms, course_semesters,
+        teacher_ranks=data_loader.teacher_ranks,
+        teacher_initials=data_loader.teacher_initials,
+    )
     
     print("\n   📄 Generating teacher timetables (PDF)...")
     pdf_generator.generate_teacher_timetables("output/teachers/")
@@ -330,7 +348,6 @@ def main():
     print("   • Room numbers shown (Room-1, Lab-CS-1, etc.)")
     print("   • Reserved slots marked for GE/SEC/VAC/AEC")
     print("   • Continuous classes formatted without separators")
-    print("   • Tutorial flexibility: sacrificed when needed")
     print("   • Year-appropriate reserved slot display")
     print("   • Multi-teacher support (co-teaching)")
     print("\n" + "=" * 70 + "\n")

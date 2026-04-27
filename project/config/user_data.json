@@ -1,0 +1,77 @@
+{
+  "college": {
+    "name": "Test",
+    "department": "CS",
+    "academic_year": "2025"
+  },
+  "semester_type": "odd",
+  "rank_caps": {
+    "assistant": 16,
+    "associate": 16,
+    "professor": 16
+  },
+  "solver_time_limit_seconds": 30,
+  "constraints": {
+    "practical_consecutive": true,
+    "max_consecutive_classes": true,
+    "max_daily_hours": true,
+    "max_daily_teacher_hours": true,
+    "early_completion": true
+  },
+  "limits": {
+    "max_consecutive_classes": 3,
+    "max_daily_hours": 6,
+    "max_daily_teacher_hours": 6
+  },
+  "teachers": [
+    {
+      "full_name": "Test Teacher",
+      "initials": "TT",
+      "rank": "Professor",
+      "department": "CS"
+    }
+  ],
+  "subjects": [
+    {
+      "course": "B.Sc. (Hons) Computer Science",
+      "semester": 1,
+      "subject": "OS",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Test Teacher"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Test Teacher",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "",
+      "semester": 5,
+      "subject": "Bogus VAC Course",
+      "section": "A",
+      "department": "Computer Science",
+      "subject_type": "VAC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Test Teacher"
+      ],
+      "split_entries": [],
+      "lectures": 0,
+      "tutorials": 0,
+      "practicals": 4,
+      "teacher": "Test Teacher",
+      "hours": "0,0,4"
+    }
+  ],
+  "preferences": []
+}
