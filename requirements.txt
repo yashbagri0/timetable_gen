@@ -11,3 +11,6 @@ pyyaml>=6.0
 
 # PDF Generation
 reportlab>=3.6.0
+
+# Local web frontend (Flask wraps the pipeline as a REST/SSE API)
+Flask>=2.3.0

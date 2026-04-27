@@ -49,8 +49,7 @@ def create_venv():
     print("\n📋 Next steps:")
     print(f"   1. Activate venv:  {activate_cmd}")
     print("   2. cd project")
-    print("   3. python main.py --configure")
-    print("   4. python main.py")
+    print("   3. python run.py")
     print("\n💡 To deactivate later: deactivate")
     print("=" * 60)
     
