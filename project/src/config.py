@@ -345,158 +345,14 @@ class Config:
     def get_section_letters(cls, num_sections):
         return [chr(65 + i) for i in range(num_sections)]
     
-    # Department-to-Lab mapping
-    DEPARTMENT_LABS = {
-        "Computer Science": "CL",
-        "Physics": "PL",
-        "Chemistry": "ChemL",
-        "Biology": "BioL",
-        "Electronics": "EL"
-    }
-    
-    # INDIVIDUAL ROOM CONFIGURATIONS (60 classrooms + labs)
-    ROOMS = {
-        # Classrooms: 60 total
-        # Ground Floor: 15 rooms (60-80 capacity)
-        **{f"R-{i}": {
-            "type": "classroom",
-            "capacity_min": 60,
-            "capacity_max": 80,
-            "floor": 0,
-            "department": "COMMON"
-        } for i in range(1, 16)},
-        
-        # First Floor: 30 rooms (mixed capacity)
-        # 15 large (60-80)
-        **{f"R-{i}": {
-            "type": "classroom",
-            "capacity_min": 60,
-            "capacity_max": 80,
-            "floor": 1,
-            "department": "COMMON"
-        } for i in range(16, 31)},
-        # 15 medium (40-50)
-        **{f"R-{i}": {
-            "type": "classroom",
-            "capacity_min": 40,
-            "capacity_max": 50,
-            "floor": 1,
-            "department": "COMMON"
-        } for i in range(31, 46)},
-        
-        # Second Floor: 15 rooms (mixed capacity)
-        # 5 medium (40-50)
-        **{f"R-{i}": {
-            "type": "classroom",
-            "capacity_min": 40,
-            "capacity_max": 50,
-            "floor": 2,
-            "department": "COMMON"
-        } for i in range(46, 51)},
-        # 10 small (20-30)
-        **{f"R-{i}": {
-            "type": "classroom",
-            "capacity_min": 20,
-            "capacity_max": 30,
-            "floor": 2,
-            "department": "COMMON"
-        } for i in range(51, 61)},
-        
-        # Computer Science Labs
-        "CL-1": {
-            "type": "lab",
-            "capacity_min": 37,
-            "capacity_max": 43,
-            "floor": 1,
-            "department": "Computer Science"
-        },
-        "CL-2": {
-            "type": "lab",
-            "capacity_min": 37,
-            "capacity_max": 43,
-            "floor": 1,
-            "department": "Computer Science"
-        },
-        "CL-3": {
-            "type": "lab",
-            "capacity_min": 37,
-            "capacity_max": 43,
-            "floor": 1,
-            "department": "Computer Science"
-        },
-        "CL-4": {
-            "type": "lab",
-            "capacity_min": 37,
-            "capacity_max": 43,
-            "floor": 1,
-            "department": "Computer Science"
-        },
-
-        # Physics Labs
-        "PL-1": {
-            "type": "lab",
-            "capacity_min": 22,
-            "capacity_max": 28,
-            "floor": 1,
-            "department": "Physics"
-        },
-        "PL-2": {
-            "type": "lab",
-            "capacity_min": 27,
-            "capacity_max": 33,
-            "floor": 1,
-            "department": "Physics"
-        },
-
-        # Chemistry Labs
-        "ChemL-1": {
-            "type": "lab",
-            "capacity_min": 22,
-            "capacity_max": 28,
-            "floor": 1,
-            "department": "Chemistry"
-        },
-        "ChemL-2": {
-            "type": "lab",
-            "capacity_min": 27,
-            "capacity_max": 33,
-            "floor": 1,
-            "department": "Chemistry"
-        },
-
-        # Biology Labs
-        "BioL-1": {
-            "type": "lab",
-            "capacity_min": 22,
-            "capacity_max": 28,
-            "floor": 1,
-            "department": "Biology"
-        },
-        "BioL-2": {
-            "type": "lab",
-            "capacity_min": 22,
-            "capacity_max": 28,
-            "floor": 1,
-            "department": "Biology"
-        },
-
-        # Electronics Labs
-        "EL-1": {
-            "type": "lab",
-            "capacity_min": 22,
-            "capacity_max": 28,
-            "floor": 1,
-            "department": "Electronics"
-        },
-        "EL-2": {
-            "type": "lab",
-            "capacity_min": 27,
-            "capacity_max": 33,
-            "floor": 1,
-            "department": "Electronics"
-        }
-    }
-    
+    # NOTE: Room data has moved to project/config/rooms.json. Load it via
+    #     from src.room_manager import RoomManager
+    # Config no longer carries ROOMS / DEPARTMENT_LABS or the get_rooms_by_type
+    # / get_labs_by_department helpers — use room_manager equivalents:
+    #     RoomManager().get_rooms_by_type("classroom")
+    #     RoomManager().get_classrooms_for_subject(subj)   # commerce-aware
+    #     RoomManager().get_labs_for_subject(subj)         # commerce-aware
+    #     RoomManager().get_room(room_id)["min_capacity" / "max_capacity"]
     # Penalty weights for room assignment (CONFIGURABLE)
     PENALTY_WEIGHTS = {
     "oversized_room": 10,         # Room bigger than needed (wasted space)
@@ -688,16 +544,7 @@ class Config:
                         return cls.GE_SEC_VAC_STRENGTHS[subject_type][semester][subject_name][section]
         return 50  # Default
     
-    @classmethod
-    def get_rooms_by_type(cls, room_type: str) -> list:
-        """Get all rooms of a specific type"""
-        return [name for name, info in cls.ROOMS.items() if info["type"] == room_type]
-    
-    @classmethod
-    def get_labs_by_department(cls, department: str) -> list:
-        """Get all labs for a specific department"""
-        return [name for name, info in cls.ROOMS.items()
-                if info["type"] == "lab" and info.get("department") == department]
+    # get_rooms_by_type / get_labs_by_department now live in src.room_manager.
 
     @classmethod
     def get_teacher_hour_cap(cls, rank: str) -> int:

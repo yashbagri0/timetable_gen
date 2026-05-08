@@ -604,6 +604,98 @@ button.big { padding: 10px 22px; font-size: 14px; }
 }
 
 /* ===========================================================================
+   ROOMS — Room selection (sidebar section)
+   =========================================================================== */
+.use-all-toggle {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px 16px; margin: 8px 0 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.use-all-toggle input[type="checkbox"] { transform: scale(1.15); margin: 0; }
+
+.commerce-warning {
+  background: #fff7ed; border: 1px solid #fed7aa;
+  border-left: 4px solid var(--warn);
+  border-radius: 6px;
+  padding: 10px 14px; margin: 8px 0 12px;
+  font-size: 12.5px; color: #9a3412;
+}
+
+.rooms-pane {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  margin-bottom: 12px;
+}
+.rooms-col {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px 14px;
+  min-height: 360px; max-height: 620px; overflow-y: auto;
+}
+.rooms-col.disabled { opacity: 0.5; pointer-events: none; }
+.rooms-col-header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin: 0 0 10px;
+  border-bottom: 1px solid var(--line-soft); padding-bottom: 6px;
+}
+.rooms-col-header h3 { margin: 0; font-size: 14px; }
+
+.room-group { margin-bottom: 14px; }
+.room-group:last-child { margin-bottom: 0; }
+.room-group-header {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: 6px 0 4px;
+}
+.room-group-header h4 {
+  margin: 0; font-size: 11.5px; font-weight: 700; color: var(--ink);
+  text-transform: uppercase; letter-spacing: 0.6px;
+}
+.room-group-header .group-count {
+  color: var(--muted); font-size: 11px; flex: 1;
+}
+.room-group-header button {
+  font-size: 11px; padding: 2px 8px; border-radius: 4px;
+}
+
+.room-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px;
+}
+.room-card {
+  display: flex; flex-direction: column; gap: 2px;
+  background: #fff; border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 8px; cursor: pointer;
+  font-size: 12px; line-height: 1.25;
+  transition: background 0.1s, border-color 0.1s, box-shadow 0.1s, transform 0.05s;
+}
+.room-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.room-card:active { transform: translateY(1px); }
+.room-card .room-id  { font-weight: 600; font-size: 13px; }
+.room-card .room-cap { color: var(--muted); font-size: 10.5px; }
+.room-badge {
+  align-self: flex-start;
+  display: inline-block; padding: 1px 6px; border-radius: 999px;
+  font-size: 9px; font-weight: 600; letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.room-badge.classroom    { background: var(--DSC);   color: #1e3a8a; }
+.room-badge.lab          { background: var(--PRAC);  color: #92400e; }
+.room-badge.computer-lab { background: #e0e7ff;     color: #3730a3; }
+.room-badge.commerce     { background: #fde68a;     color: #78350f; }
+
+.room-card.is-commerce {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+.room-card.is-selected {
+  background: var(--DSE);
+  border-color: var(--good);
+}
+
+/* ===========================================================================
    PRE-FLIGHT CHECKLIST (Generate page)
    =========================================================================== */
 .checklist {

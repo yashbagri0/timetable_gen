@@ -42,6 +42,10 @@
       <span class="nav-icon" aria-hidden="true">⚙️</span>
       <span class="nav-label">Configuration</span>
     </button>
+    <button class="nav-item"        data-section="rooms"         type="button">
+      <span class="nav-icon" aria-hidden="true">🏛</span>
+      <span class="nav-label">Rooms</span>
+    </button>
     <button class="nav-item"        data-section="preferences"   type="button">
       <span class="nav-icon" aria-hidden="true">🌓</span>
       <span class="nav-label">Preferences</span>
@@ -182,6 +186,48 @@
         </fieldset>
       </form>
       <button id="save-settings" class="primary" type="button">💾 Save Settings</button>
+    </section>
+
+    <!-- ====== Rooms (room-selection filter) ====== -->
+    <section id="rooms" class="section">
+      <h2>Room Selection</h2>
+      <p class="hint">
+        Choose which rooms are available for this run. With <em>Use all rooms</em>
+        on, every room in <code>config/rooms.json</code> is available to the
+        solver. Toggle off to restrict the solver to a specific subset.
+      </p>
+
+      <label class="use-all-toggle" for="use-all-rooms">
+        <input type="checkbox" id="use-all-rooms" checked>
+        <span><strong>Use all rooms</strong> <span class="muted">(recommended; ignores any selection below)</span></span>
+      </label>
+
+      <div id="rooms-warning" class="commerce-warning hidden">
+        ⚠️ Selection mode is <strong>ON</strong> — the solver will only use rooms
+        moved to the <em>Selected</em> column. Anything left in <em>Available</em>
+        is excluded.
+      </div>
+
+      <div class="rooms-pane" id="rooms-pane">
+        <div class="rooms-col" id="rooms-col-available">
+          <div class="rooms-col-header">
+            <h3>Available <span id="available-count" class="muted">(0)</span></h3>
+          </div>
+          <div id="available-rooms-body"></div>
+        </div>
+        <div class="rooms-col" id="rooms-col-selected">
+          <div class="rooms-col-header">
+            <h3>Selected <span id="selected-count" class="muted">(0)</span></h3>
+          </div>
+          <div id="selected-rooms-body">
+            <em class="muted">No rooms selected — pick from the left.</em>
+          </div>
+        </div>
+      </div>
+
+      <div class="row-controls">
+        <button id="save-rooms" class="primary" type="button">💾 Save Room Selection</button>
+      </div>
     </section>
 
     <!-- ====== Preferences (soft constraints) ====== -->

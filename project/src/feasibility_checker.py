@@ -7,11 +7,15 @@ from typing import List, Dict, Tuple
 from collections import defaultdict
 
 class FeasibilityChecker:
-    def __init__(self, subjects: List[Dict], room_capacities: Dict, teacher_ranks: Dict = None):
+    def __init__(self, subjects: List[Dict], room_capacities: Dict, teacher_ranks: Dict = None,
+                 selected_rooms: List[str] = None):
         self.subjects = subjects
         self.room_capacities = room_capacities
         # full_name -> rank (lowercase). Missing names fall back to default.
         self.teacher_ranks = teacher_ranks or {}
+        # Empty list / None = "use all rooms"; the room-selection check is a
+        # no-op in that case.
+        self.selected_rooms = list(selected_rooms or [])
         self.issues = []
         self.warnings = []
         self.stats = {}
@@ -27,8 +31,10 @@ class FeasibilityChecker:
         # Run all checks. _check_vac_slot_availability runs first so that a
         # subject in a year whose fixed slots aren't configured is reported
         # with a clear message before any other (less specific) issue piles
-        # on top of it.
+        # on top of it. _check_selected_room_capacity is also early so the
+        # user sees room-selection mistakes before generic capacity warnings.
         self._check_vac_slot_availability()
+        self._check_selected_room_capacity()
         self._check_teacher_workload()
         self._check_fixed_slot_capacity()
         self._check_room_capacity()
@@ -246,12 +252,13 @@ class FeasibilityChecker:
         fixed_slots = len(Config.get_all_fixed_slot_indices())
         available_slots = total_slots - fixed_slots
         
-        # Calculate capacities
+        # Calculate capacities — use room_manager for accurate counts.
+        from src.room_manager import RoomManager
+        rm = RoomManager()
         classroom_count = self.room_capacities.get("Classroom", {}).get("count", 10)
         classroom_capacity = available_slots * classroom_count
-        
-        # Count actual labs from Config.ROOMS
-        lab_count = sum(1 for room_info in Config.ROOMS.values() if room_info["type"] == "lab")
+
+        lab_count = len(rm.get_rooms_by_type("lab"))
         lab_capacity = available_slots * lab_count if lab_count > 0 else 0
         
         theory_needed = total_lectures + total_tutorials
@@ -334,9 +341,10 @@ class FeasibilityChecker:
                 if t1 not in fixed_indices and t2 not in fixed_indices:
                     available_pairs += 1
         
-        # Count actual labs from Config.ROOMS (type == "lab")
-        lab_count = sum(1 for room_info in Config.ROOMS.values() if room_info["type"] == "lab")
-        
+        # Count actual labs from rooms.json
+        from src.room_manager import RoomManager
+        lab_count = len(RoomManager().get_rooms_by_type("lab"))
+
         total_pair_capacity = available_pairs * lab_count if lab_count > 0 else 0
         
         print(f"      Practical sessions needed: {total_practical_sessions}")
@@ -397,18 +405,10 @@ class FeasibilityChecker:
         w_under = Config.PENALTY_WEIGHTS["undersized_room"]
         w_over = Config.PENALTY_WEIGHTS["oversized_room"]
 
-        # Build per-department lab list once
-        labs_by_dept = {
-            dept: [
-                (name, info) for name, info in Config.ROOMS.items()
-                if info["type"] == "lab" and info.get("department") == dept
-            ]
-            for dept in {s["Department"] for s in self.subjects}
-        }
-        classrooms = [
-            (name, info) for name, info in Config.ROOMS.items()
-            if info["type"] == "classroom"
-        ]
+        # Subject-aware room candidates via RoomManager (commerce-aware).
+        from src.room_manager import RoomManager
+        rm = RoomManager()
+        all_rooms = rm.get_all_rooms()
 
         violations_lab = []
         violations_room = []
@@ -418,28 +418,31 @@ class FeasibilityChecker:
             if students <= 0:
                 continue
 
+            classroom_ids = rm.get_classrooms_for_subject(s)
+            classrooms = [(rid, all_rooms[rid]) for rid in classroom_ids]
+            lab_ids = rm.get_labs_for_subject(s)
+            subj_labs = [(rid, all_rooms[rid]) for rid in lab_ids]
+
             # ---- Practical / lab side -----------------------------------------
-            if s.get("Practical_hours", 0) > 0:
-                dept_labs = labs_by_dept.get(s["Department"], [])
-                if dept_labs:
-                    # Per _add_lab_fit_penalties: cap range = [cap_max - 3, cap_max + 3]
-                    min_overflow = min(
-                        max(0, students - (info["capacity_max"] + 3))
-                        for _, info in dept_labs
+            if s.get("Practical_hours", 0) > 0 and subj_labs:
+                # Per _add_lab_fit_penalties: cap range = [cap_max - 3, cap_max + 3]
+                min_overflow = min(
+                    max(0, students - (info["max_capacity"] + 3))
+                    for _, info in subj_labs
+                )
+                if min_overflow * w_under > bound:
+                    violations_lab.append(
+                        (s, students, subj_labs, min_overflow, min_overflow * w_under)
                     )
-                    if min_overflow * w_under > bound:
-                        violations_lab.append(
-                            (s, students, dept_labs, min_overflow, min_overflow * w_under)
-                        )
 
             # ---- Lecture / classroom side -------------------------------------
-            if s.get("Lecture_hours", 0) > 0 or s.get("Tutorial_hours", 0) > 0:
+            if (s.get("Lecture_hours", 0) > 0 or s.get("Tutorial_hours", 0) > 0) and classrooms:
                 # Pick the best (smallest non-zero) room overflow OR oversized
                 best_under = min(
-                    max(0, students - info["capacity_max"]) for _, info in classrooms
+                    max(0, students - info["max_capacity"]) for _, info in classrooms
                 )
                 best_over = min(
-                    max(0, info["capacity_min"] - students) for _, info in classrooms
+                    max(0, info["min_capacity"] - students) for _, info in classrooms
                 )
                 penalty = max(best_under * w_under, best_over * w_over)
                 if penalty > bound:
@@ -450,7 +453,7 @@ class FeasibilityChecker:
             return
 
         for s, students, dept_labs, overflow, pen in violations_lab:
-            cap_max = max(info["capacity_max"] for _, info in dept_labs)
+            cap_max = max(info["max_capacity"] for _, info in dept_labs)
             self.issues.append(
                 f"❌ LAB OVERFLOW: '{s['Subject']}' [{s['Course_Semester']}] has "
                 f"{students} students, but the largest available {s['Department']} lab "
@@ -490,6 +493,101 @@ class FeasibilityChecker:
             "total_hours": total_hours,
             "by_type": dict(by_type)
         }
+
+    def _check_selected_room_capacity(self):
+        """
+        When the user has a non-empty selected_rooms list, every subject must
+        still have somewhere to land:
+
+          • a theory subject (lectures or tutorials) needs at least one
+            classroom OR a lab (lab fallback is allowed);
+          • a practical subject needs at least one *lab* eligible to its
+            department.
+
+        Capacity mismatch is not a hard failure — the solver tolerates
+        oversized/undersized rooms via a soft penalty
+        (_add_lab_fit_penalties), so we only emit a *warning* when the
+        largest selected room is smaller than the section. Existence,
+        however, is hard: an empty pool would leave the constraint builder
+        with no candidate rooms and crash deep in model construction.
+        """
+        if not self.selected_rooms:
+            return
+
+        print("\n📊 Checking Selected-Room Capacity...")
+        from src.room_manager import RoomManager
+        rm = RoomManager()
+        sel = set(self.selected_rooms)
+        all_rooms = rm.get_all_rooms()
+
+        hard_violations = 0
+        soft_warnings = 0
+        for s in self.subjects:
+            students = int(s.get("Students_count") or 0)
+
+            # Filter the subject's allowed rooms by the selection.
+            classrooms = [r for r in rm.get_classrooms_for_subject(s) if r in sel]
+            labs       = [r for r in rm.get_labs_for_subject(s)       if r in sel]
+
+            needs_theory    = (s.get("Lecture_hours", 0) + s.get("Tutorial_hours", 0)) > 0
+            needs_practical = s.get("Practical_hours", 0) > 0
+
+            # Hard check: theory needs at least one classroom or fallback lab.
+            if needs_theory and not classrooms and not labs:
+                hard_violations += 1
+                self.issues.append(
+                    f"❌ ROOM SELECTION ERROR: '{s.get('Subject', '(unnamed)')}' "
+                    f"[{s.get('Course_Semester', '')}] has no selected classroom "
+                    f"or fallback lab in your room selection. "
+                    f"Either select at least one room available to this subject "
+                    f"or turn off the room-selection filter."
+                )
+                continue
+
+            # Hard check: practical needs at least one department-eligible lab.
+            if needs_practical and not labs:
+                hard_violations += 1
+                subj_dept = s.get("Department", "—")
+                self.issues.append(
+                    f"❌ ROOM SELECTION ERROR: '{s.get('Subject', '(unnamed)')}' "
+                    f"[{s.get('Course_Semester', '')}] needs a {subj_dept} lab "
+                    f"but no eligible lab is in your room selection. "
+                    f"Add a {subj_dept} lab or deselect the capacity filter."
+                )
+                continue
+
+            # Soft check: capacity mismatch — solver will accept it with a
+            # penalty, but flag for awareness.
+            if needs_theory and students > 0:
+                pool = classrooms + labs
+                largest = max((all_rooms[r]["max_capacity"] for r in pool), default=0)
+                if largest < students:
+                    soft_warnings += 1
+                    self.warnings.append(
+                        f"⚠️  Tight room fit: '{s.get('Subject', '(unnamed)')}' "
+                        f"[{s.get('Course_Semester', '')}] has {students} students "
+                        f"but the largest selected theory room holds {largest}. "
+                        f"Solver will use the oversized class with a penalty."
+                    )
+
+            if needs_practical and labs:
+                largest_lab = max(all_rooms[r]["max_capacity"] for r in labs)
+                if largest_lab + 3 < students:
+                    soft_warnings += 1
+                    self.warnings.append(
+                        f"⚠️  Tight lab fit: '{s.get('Subject', '(unnamed)')}' "
+                        f"[{s.get('Course_Semester', '')}] has {students} students "
+                        f"but the largest selected lab holds {largest_lab}. "
+                        f"Solver will accept it with an undersized-lab penalty."
+                    )
+
+        if hard_violations == 0:
+            print(f"   ✅ All subjects have viable rooms within the selection "
+                  f"({len(self.selected_rooms)} room(s) selected"
+                  + (f", {soft_warnings} tight-fit warning(s)" if soft_warnings else "")
+                  + ")")
+        else:
+            print(f"   ❌ {hard_violations} subject(s) have no eligible room in the selection")
 
     def _check_vac_slot_availability(self):
         """

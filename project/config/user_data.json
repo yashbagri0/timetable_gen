@@ -10,7 +10,7 @@
     "associate": 16,
     "professor": 16
   },
-  "solver_time_limit_seconds": 30,
+  "solver_time_limit_seconds": 60,
   "constraints": {
     "practical_consecutive": true,
     "max_consecutive_classes": true,
@@ -25,17 +25,95 @@
   },
   "teachers": [
     {
-      "full_name": "Test Teacher",
-      "initials": "TT",
+      "full_name": "Ms. Rashmi Mishra",
+      "initials": "RMA",
       "rank": "Professor",
-      "department": "CS"
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Ms. Rashmi Yadav",
+      "initials": "RYV",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Ms. Archana Gahlaut",
+      "initials": "AGT",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Dr. Shalini Aggarwal",
+      "initials": "SAL",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Prof. Veer Sain Dixit",
+      "initials": "VSD",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Ms. Uma Ojha",
+      "initials": "UOA",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Mr. Jag Mohan",
+      "initials": "JMN",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Dr. Parul Jain",
+      "initials": "PJN",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Mr. Dharmendra Singh",
+      "initials": "DSH",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Mr. Manvendra Yadav",
+      "initials": "MYV",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Ms. Manisha Chouhan",
+      "initials": "MCN",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Dr. Lokesh Kumar Srivastava",
+      "initials": "LKS",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Mr. Mahesh Kumar",
+      "initials": "MKR",
+      "rank": "Professor",
+      "department": "Computer Science"
+    },
+    {
+      "full_name": "Dr. Roushan Kumar",
+      "initials": "RKR",
+      "rank": "Professor",
+      "department": "Computer Science"
     }
   ],
   "subjects": [
     {
-      "course": "B.Sc. (Hons) Computer Science",
+      "course": "CS(H)",
       "semester": 1,
-      "subject": "OS",
+      "subject": "Mathematics for Computing",
       "section": "",
       "department": "Computer Science",
       "subject_type": "DSC",
@@ -43,35 +121,876 @@
       "notes": "",
       "teaching_mode": "normal",
       "teachers_list": [
-        "Test Teacher"
+        "Ms. Rashmi Mishra"
       ],
       "split_entries": [],
       "lectures": 3,
       "tutorials": 0,
       "practicals": 2,
-      "teacher": "Test Teacher",
+      "teacher": "Ms. Rashmi Mishra",
       "hours": "3,0,2"
     },
     {
-      "course": "",
+      "course": "CS(H)",
+      "semester": 1,
+      "subject": "OOPS using python",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Archana Gahlaut"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Archana Gahlaut",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
+      "semester": 1,
+      "subject": "Computer System Architecture",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Uma Ojha"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Uma Ojha",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
+      "semester": 3,
+      "subject": "Data Structures",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Mr. Jag Mohan"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Mr. Jag Mohan",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
+      "semester": 3,
+      "subject": "Artificial Intelligence",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Rashmi Yadav"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Rashmi Yadav",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
+      "semester": 3,
+      "subject": "Operating System",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Dr. Parul Jain"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Dr. Parul Jain",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
+      "semester": 3,
+      "subject": "Data Mining",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Archana Gahlaut"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Archana Gahlaut",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
       "semester": 5,
-      "subject": "Bogus VAC Course",
+      "subject": "Algo and Adv Data Structures",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Archana Gahlaut"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Archana Gahlaut",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
+      "semester": 5,
+      "subject": "Theory of Computation",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Dr. Shalini Aggarwal"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Dr. Shalini Aggarwal",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
+      "semester": 5,
+      "subject": "Software Engineering",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Uma Ojha"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Uma Ojha",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
+      "semester": 5,
+      "subject": "Data Privacy",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Uma Ojha"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Uma Ojha",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
+      "semester": 7,
+      "subject": "Compiler Design",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Manisha Chouhan"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Manisha Chouhan",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
+      "semester": 7,
+      "subject": "Digital Image Processing",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Manisha Chouhan"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Manisha Chouhan",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H)",
+      "semester": 7,
+      "subject": "Advanced Algorithm",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Dr. Lokesh Kumar Srivastava"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Dr. Lokesh Kumar Srivastava",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(H) + CA(P)",
+      "semester": 7,
+      "subject": "Cyber Forensics",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSE",
+      "has_lab": true,
+      "notes": "Taught along with CA(P)",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Mr. Mahesh Kumar"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Mr. Mahesh Kumar",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(P)",
+      "semester": 1,
+      "subject": "Programming using C++",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Prof. Veer Sain Dixit"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Prof. Veer Sain Dixit",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(P)",
+      "semester": 3,
+      "subject": "OOPS using Python",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Rashmi Yadav"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Rashmi Yadav",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(P)",
+      "semester": 3,
+      "subject": "Design and Analysis of Algo",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Mr. Dharmendra Singh"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Mr. Dharmendra Singh",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(P)",
+      "semester": 5,
+      "subject": "Database Management System",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Manisha Chouhan"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Manisha Chouhan",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(P)",
+      "semester": 5,
+      "subject": "Data Mining",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Mr. Mahesh Kumar"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Mr. Mahesh Kumar",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(P) + CA(P)",
+      "semester": 7,
+      "subject": "Design and Analysis of Algo",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSE",
+      "has_lab": true,
+      "notes": "Taught along with CA(P)",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Mr. Manvendra Yadav"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Mr. Manvendra Yadav",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(P) + CA(P)",
+      "semester": 7,
+      "subject": "Digial Image Processing",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSE",
+      "has_lab": true,
+      "notes": "Taught along with CA(P)",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Rashmi Mishra"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Rashmi Mishra",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(P)",
+      "semester": 7,
+      "subject": "Machine Learning",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Dr. Lokesh Kumar Srivastava"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Dr. Lokesh Kumar Srivastava",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CS(P) + CA(P)",
+      "semester": 7,
+      "subject": "Research Methodology",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSE",
+      "has_lab": true,
+      "notes": "Taught along with CA(P)",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Prof. Veer Sain Dixit"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Prof. Veer Sain Dixit",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CA(P)",
+      "semester": 1,
+      "subject": "Programming using C++",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Dr. Shalini Aggarwal"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Dr. Shalini Aggarwal",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CA(P)",
+      "semester": 1,
+      "subject": "OOPS using Python",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Dr. Parul Jain"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Dr. Parul Jain",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CA(P)",
+      "semester": 3,
+      "subject": "Design and Analysis of Algo",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Mr. Mahesh Kumar"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Mr. Mahesh Kumar",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CA(P)",
+      "semester": 3,
+      "subject": "Data Mining",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Dr. Shalini Aggarwal"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Dr. Shalini Aggarwal",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CA(P)",
+      "semester": 5,
+      "subject": "Database Management System",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Mr. Manvendra Yadav"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Mr. Manvendra Yadav",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CA(P)",
+      "semester": 5,
+      "subject": "Web Design and Development",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Dr. Roushan Kumar"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Dr. Roushan Kumar",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "CA(P)",
+      "semester": 5,
+      "subject": "Machine Learning",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "DSE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Ms. Rashmi Mishra"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Ms. Rashmi Mishra",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "nan",
+      "semester": 1,
+      "subject": "Programming using C++",
       "section": "A",
+      "department": "Computer Science",
+      "subject_type": "GE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "split",
+      "teachers_list": [],
+      "split_entries": [
+        {
+          "teacher": "Ms. Rashmi Yadav",
+          "lectures": 1,
+          "tutorials": 0,
+          "practicals": 1
+        },
+        {
+          "teacher": "Dr. Parul Jain",
+          "lectures": 2,
+          "tutorials": 0,
+          "practicals": 1
+        }
+      ],
+      "lectures": 0,
+      "tutorials": 0,
+      "practicals": 0,
+      "teacher": "Ms. Rashmi Yadav | Dr. Parul Jain",
+      "hours": "1,0,1 | 2,0,1"
+    },
+    {
+      "course": "nan",
+      "semester": 1,
+      "subject": "Programming using C++",
+      "section": "B",
+      "department": "Computer Science",
+      "subject_type": "GE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "split",
+      "teachers_list": [],
+      "split_entries": [
+        {
+          "teacher": "Mr. Jag Mohan",
+          "lectures": 3,
+          "tutorials": 0,
+          "practicals": 0
+        },
+        {
+          "teacher": "Mr. Dharmendra Singh",
+          "lectures": 0,
+          "tutorials": 0,
+          "practicals": 2
+        }
+      ],
+      "lectures": 0,
+      "tutorials": 0,
+      "practicals": 0,
+      "teacher": "Mr. Jag Mohan | Mr. Dharmendra Singh",
+      "hours": "3,0,0 | 0,0,2"
+    },
+    {
+      "course": "nan",
+      "semester": 3,
+      "subject": "Database Management System",
+      "section": "A",
+      "department": "Computer Science",
+      "subject_type": "GE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Mr. Manvendra Yadav"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Mr. Manvendra Yadav",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "nan",
+      "semester": 3,
+      "subject": "Database Management System",
+      "section": "B",
+      "department": "Computer Science",
+      "subject_type": "GE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Dr. Roushan Kumar"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Dr. Roushan Kumar",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "nan",
+      "semester": 5,
+      "subject": "Operating System",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "GE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Mr. Dharmendra Singh"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Mr. Dharmendra Singh",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "nan",
+      "semester": 7,
+      "subject": "Design and Analysis of Algo",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "GE",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Dr. Lokesh Kumar Srivastava"
+      ],
+      "split_entries": [],
+      "lectures": 3,
+      "tutorials": 0,
+      "practicals": 2,
+      "teacher": "Dr. Lokesh Kumar Srivastava",
+      "hours": "3,0,2"
+    },
+    {
+      "course": "nan",
+      "semester": 1,
+      "subject": "IT Skills and Data Analysis 1",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "SEC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "split",
+      "teachers_list": [],
+      "split_entries": [
+        {
+          "teacher": "Dr. Parul Jain",
+          "lectures": 0,
+          "tutorials": 0,
+          "practicals": 2
+        },
+        {
+          "teacher": "Dr. Roushan Kumar",
+          "lectures": 0,
+          "tutorials": 0,
+          "practicals": 2
+        }
+      ],
+      "lectures": 0,
+      "tutorials": 0,
+      "practicals": 0,
+      "teacher": "Dr. Parul Jain | Dr. Roushan Kumar",
+      "hours": "0,0,2 | 0,0,2"
+    },
+    {
+      "course": "nan",
+      "semester": 3,
+      "subject": "IT Skills and Data Analysis 1",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "SEC",
+      "has_lab": true,
+      "notes": "",
+      "teaching_mode": "normal",
+      "teachers_list": [
+        "Mr. Jag Mohan"
+      ],
+      "split_entries": [],
+      "lectures": 0,
+      "tutorials": 0,
+      "practicals": 4,
+      "teacher": "Mr. Jag Mohan",
+      "hours": "0,0,4"
+    },
+    {
+      "course": "nan",
+      "semester": 5,
+      "subject": "Latex Type setting for Beginners",
+      "section": "",
+      "department": "Computer Science",
+      "subject_type": "SEC",
+      "has_lab": true,
+      "notes": "Uma mam actually only teaches 1 hour, so total hours = 3, not 4",
+      "teaching_mode": "split",
+      "teachers_list": [],
+      "split_entries": [
+        {
+          "teacher": "Mr. Dharmendra Singh",
+          "lectures": 0,
+          "tutorials": 0,
+          "practicals": 3
+        },
+        {
+          "teacher": "Ms. Uma Ojha",
+          "lectures": 0,
+          "tutorials": 0,
+          "practicals": 1
+        }
+      ],
+      "lectures": 0,
+      "tutorials": 0,
+      "practicals": 0,
+      "teacher": "Mr. Dharmendra Singh | Ms. Uma Ojha",
+      "hours": "0,0,3 | 0,0,1"
+    },
+    {
+      "course": "nan",
+      "semester": 1,
+      "subject": "Digital Empowerment",
+      "section": "",
       "department": "Computer Science",
       "subject_type": "VAC",
       "has_lab": true,
       "notes": "",
       "teaching_mode": "normal",
       "teachers_list": [
-        "Test Teacher"
+        "Dr. Roushan Kumar"
       ],
       "split_entries": [],
       "lectures": 0,
       "tutorials": 0,
       "practicals": 4,
-      "teacher": "Test Teacher",
+      "teacher": "Dr. Roushan Kumar",
       "hours": "0,0,4"
     }
   ],
-  "preferences": []
+  "preferences": [],
+  "selected_rooms": [
+    "CL1",
+    "CL2",
+    "CL3",
+    "CL4",
+    "T14",
+    "T15",
+    "T1",
+    "T17",
+    "T23",
+    "19",
+    "35",
+    "36",
+    "37",
+    "3"
+  ],
+  "active_input": "inputs/input3.xlsx"
 }

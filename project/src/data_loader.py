@@ -546,11 +546,9 @@ class DataLoader:
             department = str(row["Department"]).strip()
             semester = int(row["Semester"])
             
-            # Determine room type for practicals
-            if has_lab:
-                lab_type = Config.DEPARTMENT_LABS.get(department, "Lab-General")
-            else:
-                lab_type = None
+            # Lab_type is purely a display label now — RoomManager decides
+            # which actual labs are eligible for each subject (commerce-aware).
+            lab_type = "Lab" if has_lab else None
                 
             if "|" in teacher_str and "|" in hours_taught:
                 is_split_teaching = True
@@ -1179,36 +1177,38 @@ class DataLoader:
         return list(courses)
     
     def get_room_capacities(self) -> Dict[str, Dict]:
-        """Get room information from config"""
-        # Build room capacity summary from individual ROOMS
-        room_capacities = {}
-        
-        # Count classrooms
-        classrooms = [name for name, info in Config.ROOMS.items() if info["type"] == "classroom"]
-        if classrooms:
-            room_capacities["Classroom"] = {
-                "count": len(classrooms),
-                "rooms": classrooms
-            }
-        
-        # Count labs by department
-        labs_by_dept = {}
-        for name, info in Config.ROOMS.items():
-            if info["type"] == "lab":
-                dept = info.get("department", "General")
-                if dept not in labs_by_dept:
-                    labs_by_dept[dept] = []
-                labs_by_dept[dept].append(name)
-        
-        # Add lab counts
-        for dept, lab_list in labs_by_dept.items():
-            # Use department lab code from DEPARTMENT_LABS mapping
-            lab_code = Config.DEPARTMENT_LABS.get(dept, f"Lab-{dept}")
-            room_capacities[lab_code] = {
-                "count": len(lab_list),
-                "rooms": lab_list
-            }
-        
+        """Summarize the rooms.json data into the {bucket: {count, rooms}}
+        shape the feasibility checker expects.
+
+        Buckets:
+          - "Classroom" — non-commerce classrooms (the bulk of teaching space)
+          - "Commerce"  — commerce-tagged rooms (B.Com only)
+          - "Lab"       — non-commerce labs
+          - "Commerce_Lab" — commerce-tagged labs (none today, but defensive)
+        """
+        from src.room_manager import RoomManager, COMMERCE_DEPT
+        rm = RoomManager()
+        room_capacities: Dict[str, Dict] = {}
+
+        all_rooms = rm.get_all_rooms()
+        non_com_classrooms = [rid for rid, r in all_rooms.items()
+                              if r.get("type") == "classroom" and r.get("department") != COMMERCE_DEPT]
+        com_classrooms     = [rid for rid, r in all_rooms.items()
+                              if r.get("type") == "classroom" and r.get("department") == COMMERCE_DEPT]
+        non_com_labs       = [rid for rid, r in all_rooms.items()
+                              if r.get("type") == "lab"       and r.get("department") != COMMERCE_DEPT]
+        com_labs           = [rid for rid, r in all_rooms.items()
+                              if r.get("type") == "lab"       and r.get("department") == COMMERCE_DEPT]
+
+        if non_com_classrooms:
+            room_capacities["Classroom"]    = {"count": len(non_com_classrooms), "rooms": non_com_classrooms}
+        if com_classrooms:
+            room_capacities["Commerce"]     = {"count": len(com_classrooms),     "rooms": com_classrooms}
+        if non_com_labs:
+            room_capacities["Lab"]          = {"count": len(non_com_labs),       "rooms": non_com_labs}
+        if com_labs:
+            room_capacities["Commerce_Lab"] = {"count": len(com_labs),           "rooms": com_labs}
+
         return room_capacities
     
     def print_data_summary(self):

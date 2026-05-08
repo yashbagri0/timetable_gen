@@ -9,6 +9,7 @@ class SolverEngine:
     def __init__(self, model: cp_model.CpModel, variables: Dict, subjects: List[Dict],
                  teacher_initials: Dict[str, str], teacher_preferences: Dict = None,
                  teacher_ranks: Dict[str, str] = None):
+        from src.room_manager import RoomManager
         self.model = model
         self.variables = variables
         self.subjects = subjects
@@ -19,10 +20,21 @@ class SolverEngine:
         self.solver = cp_model.CpSolver()
         self.solution = None
         self.room_assignments = {}  # Track specific room assignments
+        self.room_manager = RoomManager()
 
     def _cap_for(self, teacher_full_name: str) -> int:
         rank = self.teacher_ranks.get(teacher_full_name, Config.DEFAULT_TEACHER_RANK)
         return Config.get_teacher_hour_cap(rank)
+
+    def _room_type_label(self, room_id: str) -> str:
+        """'Classroom' / 'Lab' / 'Lab' (with theory note stripped)."""
+        if not room_id or room_id.endswith("-TBD"):
+            return "Lab" if room_id and room_id.startswith("Lab") else "Classroom"
+        # Strip "(Theory)" suffix used for labs hosting theory classes.
+        base = room_id.split(" ")[0]
+        if not self.room_manager.has_room(base):
+            return "Classroom"
+        return self.room_manager.get_room(base).get("type", "classroom").capitalize()
 
     def _get_event_id(self, subj: Dict) -> str:
         """
@@ -225,14 +237,14 @@ class SolverEngine:
                 teacher_str = ", ".join(teachers)
 
                 assigned_room = "Room-TBD"
-                for room in Config.get_rooms_by_type("classroom"):
+                for room in self.room_manager.get_rooms_by_type("classroom"):
                     if (event_id, t, room, 'lecture') in self.variables['room_assignment']:
                         if self.solver.Value(self.variables['room_assignment'][(event_id, t, room, 'lecture')]) == 1:
                             assigned_room = room
                             break
 
                 if assigned_room == "Room-TBD":
-                    for lab in [r for r, info in Config.ROOMS.items() if info["type"] == "lab"]:
+                    for lab in self.room_manager.get_rooms_by_type("lab"):
                         if (event_id, t, lab, 'lecture') in self.variables['room_assignment']:
                             if self.solver.Value(self.variables['room_assignment'][(event_id, t, lab, 'lecture')]) == 1:
                                 assigned_room = f"{lab} (Theory)"
@@ -245,7 +257,7 @@ class SolverEngine:
                     'course_semester': subj_details['Course_Semester'],
                     'type': 'Lecture',
                     'room': assigned_room,
-                    'room_type': 'Classroom' if 'R-' in assigned_room else 'Lab',
+                    'room_type': self._room_type_label(assigned_room),
                     'subject_type': subj_details['Subject_type'],
                     'section': subj_details['Section']
                 })
@@ -260,14 +272,14 @@ class SolverEngine:
                 teacher_str = ", ".join(teachers)
 
                 assigned_room = "Room-TBD"
-                for room in Config.get_rooms_by_type("classroom"):
+                for room in self.room_manager.get_rooms_by_type("classroom"):
                     if (event_id, t, room, 'tutorial') in self.variables['room_assignment']:
                         if self.solver.Value(self.variables['room_assignment'][(event_id, t, room, 'tutorial')]) == 1:
                             assigned_room = room
                             break
 
                 if assigned_room == "Room-TBD":
-                    for lab in [r for r, info in Config.ROOMS.items() if info["type"] == "lab"]:
+                    for lab in self.room_manager.get_rooms_by_type("lab"):
                         if (event_id, t, lab, 'tutorial') in self.variables['room_assignment']:
                             if self.solver.Value(self.variables['room_assignment'][(event_id, t, lab, 'tutorial')]) == 1:
                                 assigned_room = f"{lab} (Theory)"
@@ -280,7 +292,7 @@ class SolverEngine:
                     'course_semester': subj_details['Course_Semester'],
                     'type': 'Tutorial',
                     'room': assigned_room,
-                    'room_type': 'Classroom' if 'R-' in assigned_room else 'Lab',
+                    'room_type': self._room_type_label(assigned_room),
                     'subject_type': subj_details['Subject_type'],
                     'section': subj_details['Section']
                 })
@@ -297,7 +309,7 @@ class SolverEngine:
                 continue
 
             subj_details = self._get_subject_details_by_event(event_id)
-            available_labs = Config.get_labs_by_department(subj_details["Department"])
+            available_labs = self.room_manager.get_labs_for_subject(subj_details)
             assigned_labs = [
                 lab for lab in available_labs
                 if (event_id, t, lab, 'practical') in self.variables['room_assignment']
@@ -348,13 +360,13 @@ class SolverEngine:
         if room_type not in room_usage[time_slot]:
             room_usage[time_slot][room_type] = []
         
-        # Get total rooms of this type
+        # Get total rooms of this type from rooms.json (commerce rooms included
+        # in the count — _assign_room is only used as a numeric fallback id and
+        # the commerce/non-commerce filtering is handled at variable creation).
         if room_type == "Classroom":
-            total_rooms = len(Config.get_rooms_by_type("classroom"))  # ✅ CORRECT
+            total_rooms = len(self.room_manager.get_rooms_by_type("classroom"))
         else:
-            # For labs, get count by department
-            total_rooms = len([name for name, info in Config.ROOMS.items() 
-                            if info["type"] == "lab"])  # ✅ CORRECT
+            total_rooms = len(self.room_manager.get_rooms_by_type("lab"))
         
         # Find next available room
         used_rooms = room_usage[time_slot][room_type]

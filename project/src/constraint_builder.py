@@ -4,6 +4,7 @@ variable creation, and proper 2-hour block tracking
 """
 from ortools.sat.python import cp_model
 from src.config import Config
+from src.room_manager import RoomManager
 from typing import List, Dict, Any, Tuple, Set
 import pandas as pd
 from pprint import pprint
@@ -14,7 +15,8 @@ class ConstraintBuilder:
                  constraint_selector,  # ConfigAdapter from main.py
                  teacher_initials: Dict[str, str],
                  teacher_preferences: Dict = None,
-                 teacher_ranks: Dict[str, str] = None):
+                 teacher_ranks: Dict[str, str] = None,
+                 selected_rooms: List[str] = None):
         self.subjects = subjects
         self.teachers = teachers
         self.rooms = rooms
@@ -28,6 +30,13 @@ class ConstraintBuilder:
         self.teacher_ranks = teacher_ranks or {}
         self.time_slots = Config.get_time_slots()
         self.slots = Config.get_slots_list()
+        # Single shared RoomManager — JSON loaded once per build, not per query.
+        self.room_manager = RoomManager()
+        # Optional room selection. None / empty set means "use every room";
+        # otherwise every per-subject room list is intersected with this set
+        # before variable creation so the solver simply has no decision
+        # variable for non-selected rooms.
+        self._selected_rooms: Set[str] = set(selected_rooms or [])
         
     def build_model(self) -> Tuple[cp_model.CpModel, Dict]:
         """
@@ -85,13 +94,19 @@ class ConstraintBuilder:
         print("✅ Model built successfully")
         return model, variables
     
+    def _restrict(self, room_ids: List[str]) -> List[str]:
+        """Apply the user's room-selection filter (no-op when empty)."""
+        if not self._selected_rooms:
+            return list(room_ids)
+        return [r for r in room_ids if r in self._selected_rooms]
+
     def _build_subject_id(self, subj: Dict) -> str:
         """
         Build consistent subject_id, handling split teaching with teacher initials.
-        
+
         Args:
             subj: Subject dictionary
-            
+
         Returns:
             Unique subject identifier string
         """
@@ -258,8 +273,13 @@ class ConstraintBuilder:
 
         # ================================================================
         # ROOM ASSIGNMENT VARIABLES
+        # Commerce exclusivity is enforced *here* by construction:
+        # get_classrooms_for_subject / get_labs_for_subject already filter to
+        # the side of the commerce / non-commerce boundary that matches the
+        # subject — so it's structurally impossible for the solver to pick a
+        # commerce room for a non-commerce subject (or vice versa) later.
         # ================================================================
-        classrooms = Config.get_rooms_by_type("classroom")
+        rm = self.room_manager
 
         for subj in self.subjects:
             event_id = self._get_event_id(subj)
@@ -273,68 +293,50 @@ class ConstraintBuilder:
                 lecture_tutorial_slots = allowed_slots
                 practical_slots = allowed_slots
 
-            # -------- Lecture rooms --------
+            # Subject-aware room candidates. For non-commerce subjects this is
+            # all non-commerce classrooms + non-commerce labs (theory may
+            # spill into a lab as a last resort, with a heavy soft penalty
+            # added later). For B.Com subjects, both lists are commerce-only.
+            # Then narrowed to the user's room selection (no-op if empty).
+            allowed_classrooms = self._restrict(rm.get_classrooms_for_subject(subj))
+            allowed_labs       = self._restrict(rm.get_labs_for_subject(subj))
+
+            def _alloc_room_var(t, room, kind):
+                key = (event_id, t, room, kind)
+                if key in variables['room_assignment']:
+                    return
+                clean_room = room.replace("-", "_")
+                short_kind = {'lecture': 'lec', 'tutorial': 'tut', 'practical': 'prac'}[kind]
+                variables['room_assignment'][key] = model.NewBoolVar(
+                    f"room_{clean_id}_{t}_{clean_room}_{short_kind}"
+                )
+
+            # -------- Lecture rooms (classrooms; labs are last-resort) --------
             if subj["Taught_Lecture_hours"] > 0:
-                dept_labs = (
-                    Config.get_labs_by_department(subj["Department"])
-                    if subj["Department"] in Config.DEPARTMENT_LABS.values()
-                    else []
-                )
-
                 for t in lecture_tutorial_slots:
-                    for room in classrooms:
-                        key = (event_id, t, room, 'lecture')
-                        if key not in variables['room_assignment']:
-                            room_clean = room.replace("-", "_")
-                            var_name = f"room_{clean_id}_{t}_{room_clean}_lec"
-                            variables['room_assignment'][key] = model.NewBoolVar(var_name)
-                            room_count += 1
+                    for room in allowed_classrooms:
+                        _alloc_room_var(t, room, 'lecture')
+                        room_count += 1
+                    for lab in allowed_labs:
+                        _alloc_room_var(t, lab, 'lecture')
+                        room_count += 1
 
-                    for lab in dept_labs:
-                        key = (event_id, t, lab, 'lecture')
-                        if key not in variables['room_assignment']:
-                            lab_clean = lab.replace("-", "_")
-                            var_name = f"room_{clean_id}_{t}_{lab_clean}_lec"
-                            variables['room_assignment'][key] = model.NewBoolVar(var_name)
-                            room_count += 1
-
-            # -------- Tutorial rooms --------
+            # -------- Tutorial rooms (same shape as lectures) --------
             if subj["Taught_Tutorial_hours"] > 0:
-                dept_labs = (
-                    Config.get_labs_by_department(subj["Department"])
-                    if subj["Department"] in Config.DEPARTMENT_LABS.values()
-                    else []
-                )
-
                 for t in lecture_tutorial_slots:
-                    for room in classrooms:
-                        key = (event_id, t, room, 'tutorial')
-                        if key not in variables['room_assignment']:
-                            room_clean = room.replace("-", "_")
-                            var_name = f"room_{clean_id}_{t}_{room_clean}_tut"
-                            variables['room_assignment'][key] = model.NewBoolVar(var_name)
-                            room_count += 1
+                    for room in allowed_classrooms:
+                        _alloc_room_var(t, room, 'tutorial')
+                        room_count += 1
+                    for lab in allowed_labs:
+                        _alloc_room_var(t, lab, 'tutorial')
+                        room_count += 1
 
-                    for lab in dept_labs:
-                        key = (event_id, t, lab, 'tutorial')
-                        if key not in variables['room_assignment']:
-                            lab_clean = lab.replace("-", "_")
-                            var_name = f"room_{clean_id}_{t}_{lab_clean}_tut"
-                            variables['room_assignment'][key] = model.NewBoolVar(var_name)
-                            room_count += 1
-
-            # -------- Practical rooms --------
+            # -------- Practical rooms (labs only, commerce-aware) --------
             if subj["Taught_Practical_hours"] > 0:
-                available_labs = Config.get_labs_by_department(subj["Department"])
-
                 for t in practical_slots:
-                    for lab in available_labs:
-                        key = (event_id, t, lab, 'practical')
-                        if key not in variables['room_assignment']:
-                            lab_clean = lab.replace("-", "_")
-                            var_name = f"room_{clean_id}_{t}_{lab_clean}_prac"
-                            variables['room_assignment'][key] = model.NewBoolVar(var_name)
-                            room_count += 1
+                    for lab in allowed_labs:
+                        _alloc_room_var(t, lab, 'practical')
+                        room_count += 1
 
         # ================================================================
         # ROOM PENALTY VARIABLES
@@ -462,8 +464,7 @@ class ConstraintBuilder:
             eid = self._get_event_id(s)
             combined_students[eid] = combined_students.get(eid, 0) + s["Students_count"]
 
-        labs = [name for name, info in Config.ROOMS.items() if info["type"] == "lab"]
-        classrooms = Config.get_rooms_by_type("classroom")
+        rm = self.room_manager
 
         seen_events = set()
         for subj in self.subjects:
@@ -474,6 +475,10 @@ class ConstraintBuilder:
 
             student_count = combined_students[event_id]
             department = subj["Department"]
+            # Subject-aware room candidates (commerce-exclusive both ways),
+            # then narrowed to the user's room selection (no-op if empty).
+            allowed_classrooms = self._restrict(rm.get_classrooms_for_subject(subj))
+            allowed_labs       = self._restrict(rm.get_labs_for_subject(subj))
 
             # LECTURES
             if subj["Lecture_hours"] > 0:
@@ -484,10 +489,10 @@ class ConstraintBuilder:
 
                     room_assignments = [
                         variables['room_assignment'][(event_id, t, room, 'lecture')]
-                        for room in classrooms
+                        for room in allowed_classrooms
                         if (event_id, t, room, 'lecture') in variables['room_assignment']
                     ]
-                    for lab in labs:
+                    for lab in allowed_labs:
                         if (event_id, t, lab, 'lecture') in variables['room_assignment']:
                             room_assignments.append(variables['room_assignment'][(event_id, t, lab, 'lecture')])
 
@@ -509,10 +514,10 @@ class ConstraintBuilder:
 
                     room_assignments = [
                         variables['room_assignment'][(event_id, t, room, 'tutorial')]
-                        for room in classrooms
+                        for room in allowed_classrooms
                         if (event_id, t, room, 'tutorial') in variables['room_assignment']
                     ]
-                    for lab in labs:
+                    for lab in allowed_labs:
                         if (event_id, t, lab, 'tutorial') in variables['room_assignment']:
                             room_assignments.append(variables['room_assignment'][(event_id, t, lab, 'tutorial')])
 
@@ -527,7 +532,7 @@ class ConstraintBuilder:
 
             # PRACTICALS
             if subj["Practical_hours"] > 0:
-                available_labs = Config.get_labs_by_department(department)
+                available_labs = allowed_labs
 
                 for t in range(len(self.time_slots)):
                     practical_var = variables['practical'].get((event_id, t))
@@ -555,17 +560,20 @@ class ConstraintBuilder:
         Caller is responsible for passing the combined student_count for merged
         events (sum across merge members).
         """
-        classrooms = Config.get_rooms_by_type("classroom")
+        # Iterate every classroom — only the ones that have a room_assignment
+        # variable for this (event, time, kind) actually contribute (commerce
+        # exclusivity already filtered them at variable-creation time).
+        classrooms = self.room_manager.get_rooms_by_type("classroom")
 
         for room in classrooms:
             if (event_id, time, room, class_type) not in variables['room_assignment']:
                 continue
 
             room_var = variables['room_assignment'][(event_id, time, room, class_type)]
-            room_info = Config.ROOMS[room]
+            room_info = self.room_manager.get_room(room)
 
-            capacity_min = room_info["capacity_min"]
-            capacity_max = room_info["capacity_max"]
+            capacity_min = room_info["min_capacity"]
+            capacity_max = room_info["max_capacity"]
 
             if capacity_min <= student_count <= capacity_max:
                 pass
@@ -594,9 +602,9 @@ class ConstraintBuilder:
                 continue
 
             lab_var = variables['room_assignment'][(event_id, time, lab, 'practical')]
-            lab_info = Config.ROOMS[lab]
+            lab_info = self.room_manager.get_room(lab)
 
-            capacity_center = lab_info["capacity_max"]
+            capacity_center = lab_info["max_capacity"]
             capacity_min = capacity_center - 3
             capacity_max = capacity_center + 3
 
@@ -622,7 +630,10 @@ class ConstraintBuilder:
         Add heavy penalty for using labs for theory classes (lectures/tutorials).
         Labs should only be used as last resort when all classrooms are full.
         """
-        dept_labs = Config.get_labs_by_department(department) if department in Config.DEPARTMENT_LABS.values() else []
+        # Any lab variable that exists for this (event, time, class_type) is by
+        # construction already commerce-aware (filtered in _create_variables),
+        # so we just collect every lab var the model has for this slot.
+        all_labs = self.room_manager.get_rooms_by_type("lab")
 
         if (event_id, time, 'theory_in_lab') not in variables['room_penalty']:
             clean_id = event_id.replace("-", "_").replace(" ", "_").replace(".", "")
@@ -632,7 +643,7 @@ class ConstraintBuilder:
         penalty_var = variables['room_penalty'][(event_id, time, 'theory_in_lab')]
 
         lab_usage_vars = []
-        for lab in dept_labs:
+        for lab in all_labs:
             lab_var = variables['room_assignment'].get((event_id, time, lab, class_type))
             if lab_var is not None:
                 lab_usage_vars.append(lab_var)
@@ -707,9 +718,13 @@ class ConstraintBuilder:
             eid = self._get_event_id(subj)
             events_by_id.setdefault(eid, subj)
 
+        rm = self.room_manager
+        all_classrooms = self._restrict(rm.get_rooms_by_type("classroom"))
+        all_labs       = self._restrict(rm.get_rooms_by_type("lab"))
+
         for t in range(len(self.time_slots)):
             # CLASSROOMS - at most 1 lecture/tutorial per room per slot
-            for room in Config.get_rooms_by_type("classroom"):
+            for room in all_classrooms:
                 classes_in_room = []
                 for event_id in events_by_id:
                     if (event_id, t, room, 'lecture') in variables['room_assignment']:
@@ -720,7 +735,7 @@ class ConstraintBuilder:
                     model.Add(sum(classes_in_room) <= 1)
 
             # LABS - at most 1 practical per lab per slot, accounting for 2-hour blocks
-            for lab in [name for name, info in Config.ROOMS.items() if info["type"] == "lab"]:
+            for lab in all_labs:
                 classes_in_lab = []
                 for event_id in events_by_id:
                     if (event_id, t, lab, 'practical') in variables['room_assignment']:
@@ -962,7 +977,7 @@ class ConstraintBuilder:
                 continue
             seen_events.add(event_id)
             clean_id = event_id.replace("-", "_").replace(" ", "_").replace(".", "")
-            available_labs = Config.get_labs_by_department(subj["Department"])
+            available_labs = self._restrict(self.room_manager.get_labs_for_subject(subj))
 
             # Step 1: 2-hour block tracker variables
             for t in range(len(self.time_slots) - 1):

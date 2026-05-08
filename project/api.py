@@ -92,6 +92,10 @@ def _empty_user_data() -> Dict[str, Any]:
         "teachers": [],
         "subjects": [],
         "preferences": [],
+        # Empty list = use every room in rooms.json. Otherwise, the constraint
+        # builder is told to only allocate variables for these room IDs, so the
+        # solver's solution space is strictly limited to the user's selection.
+        "selected_rooms": [],
     }
 
 
@@ -348,9 +352,21 @@ def _run_pipeline(ud: Dict[str, Any], log_queue: "queue.Queue[str | None]"):
             course_semesters = loader.get_course_semesters()
             room_caps        = loader.get_room_capacities()
 
+            # Optional room selection: empty list = use every room in rooms.json,
+            # any non-empty list restricts the model's room_assignment vars to
+            # exactly those IDs.
+            selected_rooms = list(ud.get("selected_rooms") or [])
+            if selected_rooms:
+                print(f"   📍 Room selection active: {len(selected_rooms)} of "
+                      f"{len(loader.get_room_capacities())} room buckets restricted "
+                      f"to user-selected ids.")
+
             print("\n📋 STEP 2: PRE-SOLVER FEASIBILITY CHECK")
-            fc = FeasibilityChecker(subjects, room_caps, loader.teacher_ranks)
-            ok, issues, _, _ = fc.check_feasibility()
+            fc = FeasibilityChecker(subjects, room_caps, loader.teacher_ranks,
+                                    selected_rooms=selected_rooms)
+            ok, issues, warnings, _ = fc.check_feasibility()
+            for w in warnings:
+                print(w)
             if not ok:
                 for i in issues:
                     print(i)
@@ -361,6 +377,7 @@ def _run_pipeline(ud: Dict[str, Any], log_queue: "queue.Queue[str | None]"):
                 subjects, teachers, rooms, course_semesters, room_caps,
                 adapter, loader.teacher_initials,
                 loader.teacher_preferences, loader.teacher_ranks,
+                selected_rooms=selected_rooms,
             )
             model, variables = cb.build_model()
 
@@ -411,6 +428,15 @@ def index():
     if not (STATIC_DIR / "index.html").exists():
         return "<h1>Frontend not built</h1>", 500
     return send_from_directory(str(STATIC_DIR), "index.html")
+
+
+@app.route("/api/rooms", methods=["GET"])
+def get_rooms():
+    """Return the contents of rooms.json so the Room Selection UI can render
+    grouped cards. Order matches the JSON file (insertion order preserved)."""
+    from src.room_manager import RoomManager
+    rm = RoomManager()
+    return jsonify({"rooms": list(rm.get_all_rooms().values())})
 
 
 @app.route("/api/config", methods=["GET"])

@@ -23,6 +23,12 @@ const api = {
     return r.json();
   },
 
+  async getRooms() {
+    const r = await fetch(`${BASE_URL}/api/rooms`);
+    if (!r.ok) throw new Error(`GET /api/rooms → HTTP ${r.status}`);
+    return r.json();
+  },
+
   // ---- Pipeline -----------------------------------------------------------
   async generateExcel() {
     const r = await fetch(`${BASE_URL}/api/generate-excel`, { method: "POST" });

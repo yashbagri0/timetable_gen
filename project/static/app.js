@@ -41,6 +41,7 @@
     if (name === "dashboard")   refreshDashboard();
     if (name === "preferences") renderPreferences();   // teacher list may have changed
     if (name === "subjects")    renderSubjects();      // teacher list may have changed
+    if (name === "rooms")       loadRoomsSection();    // lazy-load /api/rooms
     if (name === "generate")    refreshGenerateGate();
     if (name === "results")     loadResults();
   }
@@ -780,6 +781,179 @@
                               : "Go to the Generate page to run the solver.";
     }
   }
+
+  // ============================================================
+  // Rooms section — pick which rooms the solver may use
+  // ============================================================
+  // Cached rooms.json contents (loaded lazily when the user opens the tab)
+  let _allRooms = null;
+
+  // Group ordering / labels for the rendered cards.  A room lands in exactly
+  // one group; first-match-wins so the special groups (commerce, computer
+  // labs, department labs) take precedence over the floor-based fallbacks.
+  function _roomGroupKey(r) {
+    const dept = (r.department || "").toLowerCase();
+    if (dept === "commerce")               return "commerce";
+    if (r.type === "lab" && dept === "computer science") return "computer_lab";
+    if (r.type === "lab")                   return "department_lab";
+    if (r.type === "classroom" && r.floor === "ground") return "classroom_ground";
+    if (r.type === "classroom" && r.floor === "first")  return "classroom_first";
+    if (r.type === "classroom" && r.floor === "second") return "classroom_second";
+    return "other";
+  }
+  const ROOM_GROUP_ORDER = [
+    { key: "computer_lab",      title: "Computer Labs",            blurb: "Computer-Science-only labs" },
+    { key: "department_lab",    title: "Department Labs",          blurb: "Subject-specific (Physics / Chemistry / Biology / Electronics)" },
+    { key: "classroom_ground",  title: "Ground Floor Classrooms",  blurb: "" },
+    { key: "classroom_first",   title: "1st Floor Classrooms",     blurb: "" },
+    { key: "classroom_second",  title: "2nd Floor Classrooms",     blurb: "" },
+    { key: "commerce",          title: "Commerce Rooms",           blurb: "Restricted to B.Com subjects only" },
+    { key: "other",             title: "Other",                    blurb: "" },
+  ];
+
+  function _roomBadgeHTML(r) {
+    const dept = (r.department || "").toLowerCase();
+    let cls = "room-badge ", text = "Classroom";
+    if (dept === "commerce")                            { cls += "commerce";     text = "Commerce"; }
+    else if (r.type === "lab" && dept === "computer science") { cls += "computer-lab"; text = "Computer Lab"; }
+    else if (r.type === "lab")                          { cls += "lab";          text = "Lab"; }
+    else                                                 { cls += "classroom";    }
+    return `<span class="${cls}">${escape(text)}</span>`;
+  }
+  function _roomCardHTML(r) {
+    const isCommerce = (r.department || "").toLowerCase() === "commerce";
+    const cap = (r.min_capacity != null && r.max_capacity != null && r.min_capacity !== r.max_capacity)
+      ? `${r.min_capacity}–${r.max_capacity}`
+      : (r.max_capacity != null ? String(r.max_capacity) : "");
+    return `
+      <div class="room-card${isCommerce ? ' is-commerce' : ''}" data-room-id="${escape(r.id)}">
+        <span class="room-id">${escape(r.id)}</span>
+        ${cap ? `<span class="room-cap">cap ${cap}${r.computers ? ` · ${r.computers}💻` : ''}</span>` : ''}
+        ${_roomBadgeHTML(r)}
+      </div>
+    `;
+  }
+
+  async function loadRoomsSection() {
+    if (_allRooms === null) {
+      try {
+        const data = await api.getRooms();
+        _allRooms = data.rooms || [];
+      } catch (e) {
+        _allRooms = [];
+        console.error("getRooms failed:", e);
+      }
+    }
+    // user_data.selected_rooms might be undefined for older configs
+    if (!Array.isArray(userData.selected_rooms)) userData.selected_rooms = [];
+    const useAll = userData.selected_rooms.length === 0;
+    document.getElementById("use-all-rooms").checked = useAll;
+    document.getElementById("rooms-warning").classList.toggle("hidden", useAll);
+    renderRoomsSection();
+  }
+
+  function renderRoomsSection() {
+    if (_allRooms === null) return;
+    const useAll = document.getElementById("use-all-rooms").checked;
+    const selectedSet = new Set(userData.selected_rooms || []);
+
+    // The two columns
+    const availBody = document.getElementById("available-rooms-body");
+    const selBody   = document.getElementById("selected-rooms-body");
+    availBody.innerHTML = "";
+    selBody.innerHTML   = "";
+
+    // Bucket by group, preserving rooms.json order within each group
+    const buckets = Object.fromEntries(ROOM_GROUP_ORDER.map((g) => [g.key, []]));
+    for (const r of _allRooms) buckets[_roomGroupKey(r)].push(r);
+
+    let availCount = 0, selCount = 0;
+
+    for (const group of ROOM_GROUP_ORDER) {
+      const rooms = buckets[group.key];
+      if (!rooms.length) continue;
+
+      const availInGroup = rooms.filter((r) => !selectedSet.has(r.id));
+      const selInGroup   = rooms.filter((r) =>  selectedSet.has(r.id));
+
+      if (availInGroup.length) {
+        availBody.appendChild(_renderGroup(group, availInGroup, "to-select"));
+      }
+      if (selInGroup.length) {
+        selBody.appendChild(_renderGroup(group, selInGroup, "to-deselect"));
+      }
+      availCount += availInGroup.length;
+      selCount   += selInGroup.length;
+    }
+
+    document.getElementById("available-count").textContent = `(${availCount})`;
+    document.getElementById("selected-count").textContent  = `(${selCount})`;
+
+    // Empty-state message in Selected column
+    if (selCount === 0) {
+      selBody.innerHTML = useAll
+        ? `<em class="muted">All rooms will be used (toggle off to pick a subset).</em>`
+        : `<em class="muted">No rooms selected — pick from the left.</em>`;
+    }
+
+    // Disable interaction visually when "use all" is on
+    document.getElementById("rooms-col-available").classList.toggle("disabled", useAll);
+    document.getElementById("rooms-col-selected").classList.toggle("disabled", useAll);
+  }
+
+  function _renderGroup(group, rooms, action) {
+    const wrap = document.createElement("div");
+    wrap.className = "room-group";
+
+    const header = document.createElement("div");
+    header.className = "room-group-header";
+    header.innerHTML = `
+      <h4>${escape(group.title)}</h4>
+      <span class="group-count">${rooms.length}${group.blurb ? ` · ${escape(group.blurb)}` : ''}</span>
+    `;
+    const allBtn = document.createElement("button");
+    allBtn.type = "button";
+    allBtn.textContent = action === "to-select" ? "Select all" : "Clear all";
+    allBtn.addEventListener("click", () => {
+      const ids = rooms.map((r) => r.id);
+      const cur = new Set(userData.selected_rooms || []);
+      if (action === "to-select") ids.forEach((id) => cur.add(id));
+      else                         ids.forEach((id) => cur.delete(id));
+      userData.selected_rooms = Array.from(cur);
+      renderRoomsSection();
+    });
+    header.appendChild(allBtn);
+    wrap.appendChild(header);
+
+    const cards = document.createElement("div");
+    cards.className = "room-cards";
+    cards.innerHTML = rooms.map(_roomCardHTML).join("");
+    cards.querySelectorAll(".room-card").forEach((el) => {
+      el.addEventListener("click", () => {
+        const id = el.dataset.roomId;
+        const cur = new Set(userData.selected_rooms || []);
+        if (cur.has(id)) cur.delete(id); else cur.add(id);
+        userData.selected_rooms = Array.from(cur);
+        renderRoomsSection();
+      });
+    });
+    wrap.appendChild(cards);
+    return wrap;
+  }
+
+  // Toggle handler — switches between "use all" and "use selection"
+  document.getElementById("use-all-rooms").addEventListener("change", (e) => {
+    if (e.target.checked) {
+      // Going back to "use all" — wipe selection per the spec
+      userData.selected_rooms = [];
+    }
+    document.getElementById("rooms-warning").classList.toggle("hidden", e.target.checked);
+    renderRoomsSection();
+  });
+
+  document.getElementById("save-rooms").addEventListener("click", () => {
+    persist("Room Selection");
+  });
 
   // ============================================================
   // Generate page — Build Excel + Run Solver, with live step progress
