@@ -15,7 +15,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-    Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
 from src.config import Config
@@ -59,7 +59,8 @@ class PDFGenerator:
                  teacher_initials: Dict = None,
                  college_name: str = None,
                  department: str = None,
-                 academic_year: str = None):
+                 academic_year: str = None,
+                 logo_path: Optional[str] = None):
         self.solution = solution
         self.subjects = subjects
         self.teachers = teachers
@@ -78,6 +79,7 @@ class PDFGenerator:
         self.college_name  = college_name  or self.DEFAULT_COLLEGE_NAME
         self.department    = department    or self.DEFAULT_DEPARTMENT
         self.academic_year = academic_year or self.DEFAULT_ACADEMIC_YEAR
+        self.logo_path     = (logo_path or "").strip() or None
         self.generated_date = date.today().strftime('%d %B %Y')
 
         self._slot_idx = self._slot_index_map()
@@ -309,9 +311,63 @@ class PDFGenerator:
         doc.build(story)
 
     # ---- Header (logo / college / type label) -----------------------------
+    def _resolve_logo_flowable(self, max_w_mm: float, max_h_mm: float):
+        """Return a reportlab flowable for the logo cell.
+
+        Tries `self.logo_path` in order: PNG/JPG → embed directly; SVG →
+        rasterise via cairosvg if available. Any failure (missing file,
+        unsupported format, cairosvg not installed for SVG) silently
+        falls back to the grey "LOGO" placeholder so PDF generation
+        never breaks because of a logo issue.
+        """
+        ps = self._para_styles
+        placeholder = Paragraph("<b>LOGO</b>", ps['logo_box'])
+        if not self.logo_path:
+            return placeholder, False
+        try:
+            path = self.logo_path
+            if not os.path.isfile(path):
+                return placeholder, False
+            ext = os.path.splitext(path)[1].lower()
+
+            if ext == ".svg":
+                # SVG → PNG via cairosvg (optional dep). If missing, fall back.
+                try:
+                    import cairosvg  # type: ignore
+                    import io
+                    png_bytes = cairosvg.svg2png(
+                        url=path,
+                        output_width=int(max_w_mm * 4),  # ~96 DPI source
+                    )
+                    img = Image(io.BytesIO(png_bytes),
+                                width=max_w_mm * mm, height=max_h_mm * mm,
+                                kind='proportional')
+                    return img, True
+                except Exception as e:
+                    print(f"   ⚠️  Logo SVG could not be rasterised "
+                          f"({type(e).__name__}: {e}); using placeholder.")
+                    return placeholder, False
+
+            if ext in (".png", ".jpg", ".jpeg", ".gif"):
+                img = Image(path,
+                            width=max_w_mm * mm, height=max_h_mm * mm,
+                            kind='proportional')
+                return img, True
+
+            # Unrecognised extension — fall back rather than crash.
+            print(f"   ⚠️  Logo file '{path}' has unsupported extension "
+                  f"'{ext}'; using placeholder.")
+            return placeholder, False
+        except Exception as e:
+            print(f"   ⚠️  Logo could not be loaded ({type(e).__name__}: {e}); "
+                  f"using placeholder.")
+            return placeholder, False
+
     def _make_header(self, page_label: str) -> Table:
         ps = self._para_styles
-        logo = Paragraph("<b>LOGO</b>", ps['logo_box'])
+        # Logo cell ~28mm × 22mm; leave a little padding so the image
+        # doesn't visually touch the cell border.
+        logo, has_image = self._resolve_logo_flowable(max_w_mm=24, max_h_mm=18)
         college_block = (
             f"<b><font size='18'>{self._escape(self.college_name.upper())}</font></b>"
             f"<br/><font size='10'>"
@@ -331,16 +387,20 @@ class PDFGenerator:
             colWidths=[28 * mm, None, 55 * mm],
             rowHeights=[22 * mm],
         )
-        tbl.setStyle(TableStyle([
+        ts = TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('ALIGN',  (0, 0), (0, 0), 'CENTER'),
             ('ALIGN',  (1, 0), (1, 0), 'CENTER'),
             ('ALIGN',  (2, 0), (2, 0), 'RIGHT'),
-            ('BACKGROUND', (0, 0), (0, 0), self.LOGO_BG),
-            ('BOX', (0, 0), (0, 0), 0.75, colors.HexColor('#888888')),
             ('LEFTPADDING',  (0, 0), (-1, -1), 4),
             ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ]))
+        ])
+        # Only paint the grey box around the placeholder; once a real logo is
+        # loaded we let it sit on the white page without the chrome.
+        if not has_image:
+            ts.add('BACKGROUND', (0, 0), (0, 0), self.LOGO_BG)
+            ts.add('BOX', (0, 0), (0, 0), 0.75, colors.HexColor('#888888'))
+        tbl.setStyle(ts)
         return tbl
 
     def _horizontal_rule(self) -> Table:

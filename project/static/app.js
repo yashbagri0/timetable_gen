@@ -667,6 +667,57 @@
   document.getElementById("save-settings").addEventListener("click", () => {
     readSettingsForm(); persist("Settings");
   });
+
+  // ---- Logo upload / preview wiring -------------------------------------
+  function refreshLogoPreview() {
+    const path = (userData && userData.logo_path) || "";
+    document.getElementById("logo-path-input").value = path;
+    const wrap = document.getElementById("logo-preview");
+    const img  = document.getElementById("logo-preview-img");
+    if (path) {
+      // Cache-bust so a re-uploaded file is shown immediately.
+      img.src = `/api/logo?ts=${Date.now()}`;
+      wrap.classList.remove("hidden");
+    } else {
+      img.removeAttribute("src");
+      wrap.classList.add("hidden");
+    }
+  }
+  document.getElementById("logo-browse-btn").addEventListener("click", () => {
+    document.getElementById("logo-file-picker").click();
+  });
+  document.getElementById("logo-file-picker").addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const r = await fetch("/api/logo", { method: "POST", body: fd });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      // Server already persisted user_data.json — pull the fresh copy so the
+      // in-memory userData stays in sync (avoids overwriting on next save).
+      userData = await api.getConfig();
+      refreshLogoPreview();
+      showToast("✅ Logo uploaded", "ok");
+    } catch (err) {
+      showToast(`❌ ${err.message}`, "err");
+    } finally {
+      e.target.value = "";  // allow re-picking the same file
+    }
+  });
+  document.getElementById("logo-clear-btn").addEventListener("click", async () => {
+    try {
+      const r = await fetch("/api/logo", { method: "DELETE" });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      userData = await api.getConfig();
+      refreshLogoPreview();
+      showToast("✅ Logo cleared", "ok");
+    } catch (err) {
+      showToast(`❌ ${err.message}`, "err");
+    }
+  });
   document.getElementById("save-teachers").addEventListener("click",     () => persist("Teachers"));
   document.getElementById("save-subjects").addEventListener("click",     () => persist("Subjects"));
   document.getElementById("save-preferences").addEventListener("click",  () => persist("Preferences"));
@@ -1189,6 +1240,32 @@
     renderTimetable();
   });
 
+  // ---- Course-group key: mirrors pdf_generator._course_group_key --------
+  // The backend's `course_semester` field embeds the subject name to keep
+  // solver event IDs unique, so listing distinct values yields per-subject
+  // entries. Strip that trailing segment so the picker shows one entry per
+  // actual class (course + semester + section).
+  function courseGroupKey(c) {
+    const cs = c.course_semester || "";
+    if (!cs) return "";
+    if (cs.startsWith("COMMON-")) {
+      // COMMON-{TYPE}-Sem{N}-{subj_short}-Sec{X}  →  COMMON-{TYPE}-Sem{N}-Sec{X}
+      const parts = cs.split("-");
+      if (parts.length >= 5 && parts[parts.length - 1].startsWith("Sec")) {
+        return `${parts[0]}-${parts[1]}-${parts[2]}-${parts[parts.length - 1]}`;
+      }
+      return cs;
+    }
+    // Regular: "{course}-Sem{N}-{section_or_subject}". When the subject has
+    // a section, the trailing chunk IS the section (already class-grouped).
+    // Otherwise the trailing chunk is a subject_short tag and is stripped.
+    if (!c.section) {
+      const parts = cs.split("-");
+      if (parts.length > 1) return parts.slice(0, -1).join("-");
+    }
+    return cs;
+  }
+
   // ---- Entity extraction (per tab) --------------------------------------
   function entitiesForTab(tab) {
     if (!resultsState.data) return [];
@@ -1204,7 +1281,8 @@
               .map((r) => r.trim()).filter((r) => r && !r.endsWith("-TBD"))
               .forEach((r) => set.add(r));
           } else if (tab === "course") {
-            if (c.course_semester) set.add(c.course_semester);
+            const k = courseGroupKey(c);
+            if (k) set.add(k);
           }
         }
       }
@@ -1243,7 +1321,7 @@
     if (tab === "teacher") return (c.teachers_list || []).includes(pick);
     if (tab === "room")    return String(c.room || "").split(",")
                                   .map((r) => r.trim()).includes(pick);
-    if (tab === "course")  return c.course_semester === pick;
+    if (tab === "course")  return courseGroupKey(c) === pick;
     return false;
   }
 
@@ -1263,6 +1341,29 @@
     }
     if (meta) lines.push(`<span class="meta">${escape(meta)}</span>`);
     return lines.join("");
+  }
+
+  // ---- Legend (mirrors PDF color key) -----------------------------------
+  // Reused below every results grid (teacher, room, course views). Colors
+  // come from the same CSS vars the .cell-XXX classes use, so a palette
+  // change in one place updates both grid + legend.
+  function legendHTML() {
+    const items = [
+      { label: "DSC",             cls: "cell-DSC"  },
+      { label: "DSE",             cls: "cell-DSE"  },
+      { label: "GE/SEC/VAC/AEC",  cls: "cell-GE"   },
+      { label: "Lab/Practical",   cls: "cell-PRAC" },
+      { label: "Free",            cls: "cell-Free" },
+    ];
+    const swatches = items.map(i =>
+      `<span class="legend-item">
+         <span class="legend-swatch ${i.cls}"></span>
+         <span class="legend-text">${i.label}</span>
+       </span>`
+    ).join("");
+    return `<div class="results-legend">
+              <span class="legend-label">Color Key:</span>${swatches}
+            </div>`;
   }
 
   // ---- Render the grid for the current (tab, pick) ----------------------
@@ -1310,6 +1411,7 @@
     }
     grid.innerHTML = "";
     grid.appendChild(tbl);
+    grid.insertAdjacentHTML("beforeend", legendHTML());
   }
 
   // ---- Click popover ----------------------------------------------------
@@ -1474,6 +1576,7 @@
     (userData.subjects || []).forEach(ensureSubjectShape);
 
     fillSettingsForm(userData);
+    refreshLogoPreview();
     renderTeachers();
     renderSubjects();
     renderPreferences();

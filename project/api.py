@@ -74,6 +74,9 @@ def _empty_user_data() -> Dict[str, Any]:
             "department": "Computer Science",
             "academic_year": f"{date.today().year}-{date.today().year + 1}",
         },
+        # Absolute path to a PNG / JPG / SVG that PDFGenerator will embed in
+        # every PDF's top-left header. Empty → grey placeholder is used.
+        "logo_path": "",
         "semester_type": "odd",
         "rank_caps": dict(Config.TEACHER_RANK_HOUR_CAPS),
         "solver_time_limit_seconds": Config.SOLVER_TIME_LIMIT,
@@ -402,6 +405,7 @@ def _run_pipeline(ud: Dict[str, Any], log_queue: "queue.Queue[str | None]"):
                 college_name=college.get("name"),
                 department=college.get("department"),
                 academic_year=college.get("academic_year"),
+                logo_path=ud.get("logo_path") or None,
             )
             pg.generate_teacher_timetables(str(OUTPUT_DIR / "teachers"))
             pg.generate_room_timetables(str(OUTPUT_DIR / "rooms"))
@@ -437,6 +441,61 @@ def get_rooms():
     from src.room_manager import RoomManager
     rm = RoomManager()
     return jsonify({"rooms": list(rm.get_all_rooms().values())})
+
+
+# Where uploaded logos live. Stable filename per upload (extension preserved)
+# so /api/logo can simply stream whatever's in user_data.json.logo_path.
+LOGO_DIR = Path(__file__).parent / "config"
+
+
+@app.route("/api/logo", methods=["GET"])
+def get_logo():
+    """Stream the currently configured logo file so the frontend can show
+    a live preview without needing file:// access. 404 if no logo configured
+    or the file no longer exists."""
+    ud = _load_user_data()
+    path = (ud.get("logo_path") or "").strip()
+    if not path or not os.path.isfile(path):
+        return jsonify({"error": "No logo configured."}), 404
+    return send_file(path)
+
+
+@app.route("/api/logo", methods=["POST"])
+def upload_logo():
+    """Save an uploaded logo to config/logo.<ext>, persist the absolute
+    path into user_data.json, and return the saved path. The frontend's
+    Browse button posts here as multipart/form-data with the file in the
+    'file' field."""
+    if "file" not in request.files:
+        return jsonify({"error": "Missing 'file' field"}), 400
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "Empty filename"}), 400
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in (".png", ".jpg", ".jpeg", ".gif", ".svg"):
+        return jsonify({
+            "error": f"Unsupported logo format '{ext}'. Use PNG, JPG, GIF, or SVG."
+        }), 400
+
+    LOGO_DIR.mkdir(parents=True, exist_ok=True)
+    # One canonical filename per format, overwriting previous uploads.
+    dest = LOGO_DIR / f"logo{ext}"
+    f.save(str(dest))
+
+    ud = _load_user_data()
+    ud["logo_path"] = str(dest.resolve())
+    _save_user_data(ud)
+    return jsonify({"ok": True, "logo_path": ud["logo_path"]})
+
+
+@app.route("/api/logo", methods=["DELETE"])
+def clear_logo():
+    """Clear the configured logo path (the file itself is left on disk
+    in case the user re-selects it). Returns the updated user_data."""
+    ud = _load_user_data()
+    ud["logo_path"] = ""
+    _save_user_data(ud)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/config", methods=["GET"])

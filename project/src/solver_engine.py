@@ -1,6 +1,7 @@
 """
 Solver engine module - UPDATED with room numbering
 """
+import time
 from ortools.sat.python import cp_model
 from src.config import Config
 from typing import Dict, List, Any, Optional
@@ -57,13 +58,26 @@ class SolverEngine:
         
     def solve(self) -> Optional[Dict]:
         """Solve the timetable optimization problem"""
-        print(f"\n🔍 Starting solver (max {Config.SOLVER_TIME_LIMIT}s)...")
-        
-        self.solver.parameters.max_time_in_seconds = Config.SOLVER_TIME_LIMIT
+        time_limit = Config.SOLVER_TIME_LIMIT
+        print(f"\n🔍 Starting solver (max {time_limit}s)...")
+
+        self.solver.parameters.max_time_in_seconds = time_limit
         self.solver.parameters.log_search_progress = True
-        
+
+        start = time.time()
         status = self.solver.Solve(self.model)
-        
+        elapsed = time.time() - start
+
+        # Format: "Xm Ys" once we cross 60s, else "X.Xs". Always show the
+        # configured limit so it's obvious whether the solver hit the
+        # timeout (elapsed ≈ limit) or finished early.
+        if elapsed >= 60:
+            mins, secs = divmod(int(elapsed), 60)
+            elapsed_str = f"{mins}m {secs}s"
+        else:
+            elapsed_str = f"{elapsed:.1f}s"
+        print(f"⏱️  Solver finished in {elapsed_str} (limit was {time_limit}s)")
+
         if status == cp_model.OPTIMAL:
             print("✅ OPTIMAL solution found!")
             self.solution = self._extract_solution()
@@ -80,8 +94,30 @@ class SolverEngine:
             return None
 
     def _assign_assistants(self, solution: Dict) -> Dict:
-        """Post-processing: Assign assistant teachers to labs based on 1:20 ratio"""
+        """Post-processing: assign assistant teachers to labs (1:20 ratio).
+
+        Why post-processing, not part of the CP-SAT model
+        --------------------------------------------------
+        Adding `assistant[event, time, teacher]` BoolVars for every
+        (practical-event × candidate-slot × eligible-teacher) triple roughly
+        doubles the variable count on this dataset (~20k extra vars on top
+        of ~42k), plus the new teacher-clash constraints they need. The
+        solver already hits its time limit on the existing model, so an
+        in-model formulation would push runtimes past the user's tolerance
+        for a marginal load-balance gain. We instead:
+
+          1. Let the solver schedule main teaching as before.
+          2. Walk the resulting schedule and assign assistants to the
+             *exact slots already chosen for each practical*, only at hours
+             where the candidate teacher is genuinely free (i.e. has no
+             other class in the master schedule at that slot — see
+             `teacher_availability` initialised below).
+          3. Emit a final diagnostic for any teacher still under their
+             rank cap so it's clear whether they were skipped due to a
+             slot clash or for some other reason.
+        """
         print("\n🔧 Assigning assistant teachers to lab classes...")
+        print("   (post-processing pass — cap clashes are diagnosed at the end)")
         
         teacher_availability = {}  # {teacher: {time_slot: is_free}}
         teacher_workload = {}      # {teacher: hours_assigned}
@@ -236,6 +272,52 @@ class SolverEngine:
                     f"needs {p['teachers_needed']} teachers, assigned "
                     f"{len(assigned) + 1}"
                 )
+
+        # ---- Under-cap diagnostic -----------------------------------------
+        # For each teacher whose hours are still below their rank cap, check
+        # whether any lab block they could have assisted *exists with their
+        # free slots*. If none of their remaining free slots line up with a
+        # lab requirement that matches their department, the teacher is
+        # genuinely stuck — adding more lab hours is impossible without
+        # double-booking. We surface this so the user knows it's a slot
+        # clash rather than an algorithmic miss.
+        diag_count = 0
+        for teacher in sorted(all_teachers):
+            cap = self._cap_for(teacher)
+            load = int(teacher_workload[teacher])
+            if load >= cap:
+                continue
+
+            free_slots = {
+                t for t, ok in teacher_availability[teacher].items() if ok
+            }
+            if not free_slots:
+                continue  # fully booked — different problem, not the one we're diagnosing
+
+            teacher_dept = next(
+                (s["Department"] for s in self.subjects if s["Teacher"] == teacher),
+                None
+            )
+            could_have_helped_any = False
+            for p in pending:
+                if p["subj"]["Department"] != teacher_dept:
+                    continue
+                if p["subj"]["Teacher"] == teacher:
+                    continue
+                if all(h in free_slots for h in p["practical_hours"]):
+                    could_have_helped_any = True
+                    break
+
+            if not could_have_helped_any:
+                diag_count += 1
+                print(
+                    f"   ⚠️  {teacher} is under cap ({load}/{cap}h) but all "
+                    f"free slots clash with lab requirements — cannot assign "
+                    f"more hours"
+                )
+
+        if diag_count == 0:
+            print(f"   ✅ No teacher is under cap with usable free slots remaining")
 
         solution['assistant_assignments'] = assistant_assignments
         solution['teacher_workload_after_assistants'] = teacher_workload

@@ -146,6 +146,18 @@
           <label>Name <input type="text" name="college.name" /></label>
           <label>Department <input type="text" name="college.department" /></label>
           <label>Academic Year <input type="text" name="college.academic_year" placeholder="2024-2025" /></label>
+          <label class="logo-field">
+            College Logo
+            <div class="logo-row">
+              <input type="text" name="logo_path" id="logo-path-input" placeholder="No logo uploaded" readonly />
+              <input type="file" id="logo-file-picker" accept="image/png,image/jpeg,image/gif,image/svg+xml" hidden />
+              <button type="button" id="logo-browse-btn" class="logo-btn">Browse…</button>
+              <button type="button" id="logo-clear-btn" class="logo-btn logo-clear">Clear</button>
+            </div>
+            <div id="logo-preview" class="logo-preview hidden">
+              <img id="logo-preview-img" alt="College logo preview" />
+            </div>
+          </label>
         </fieldset>
 
         <fieldset>

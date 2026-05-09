@@ -248,6 +248,32 @@ fieldset input[type="text"], fieldset input[type="number"], fieldset select {
   background: #fff; font-family: inherit; font-size: 13px;
 }
 
+/* ---- Logo upload field ---- */
+fieldset label.logo-field {
+  flex-direction: column; align-items: stretch; gap: 6px;
+}
+.logo-row {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.logo-row input[type="text"] {
+  flex: 1 1 200px; max-width: none;
+  background: #f8f9fb; color: var(--muted);
+}
+.logo-btn {
+  padding: 5px 12px; border: 1px solid var(--line); border-radius: 5px;
+  background: #fff; cursor: pointer; font-size: 12px;
+}
+.logo-btn:hover { background: var(--bg); }
+.logo-btn.logo-clear { color: var(--bad); }
+.logo-preview {
+  margin-top: 4px; padding: 8px; border: 1px dashed var(--line);
+  border-radius: 6px; background: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.logo-preview img {
+  max-width: 140px; max-height: 64px; object-fit: contain;
+}
+
 /* ===========================================================================
    BUTTONS
    =========================================================================== */
@@ -481,6 +507,31 @@ button.big { padding: 10px 22px; font-size: 14px; }
 .results-grid td.cell-VAC  { background: var(--VAC); }
 .results-grid td.cell-AEC  { background: var(--AEC); }
 .results-grid td.cell-PRAC { background: var(--PRAC); }
+
+/* ---- Color legend (mirrors the PDF "Color Key" strip) ---- */
+.results-legend {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 14px;
+  margin: 10px 2px 4px;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.results-legend .legend-label { font-weight: 600; margin-right: 4px; }
+.results-legend .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.results-legend .legend-swatch {
+  display: inline-block; width: 14px; height: 14px;
+  border: 1px solid #888; border-radius: 2px;
+}
+.results-legend .legend-swatch.cell-DSC  { background: var(--DSC); }
+.results-legend .legend-swatch.cell-DSE  { background: var(--DSE); }
+.results-legend .legend-swatch.cell-GE   { background: var(--GE); }
+.results-legend .legend-swatch.cell-PRAC { background: var(--PRAC); }
+.results-legend .legend-swatch.cell-Free { background: #ffffff; }
+.results-legend .legend-text { color: var(--ink); }
 .results-grid .subj { font-weight: 600; display: block; line-height: 1.25; }
 .results-grid .meta { color: var(--muted); font-size: 10px; display: block; line-height: 1.3; }
 
