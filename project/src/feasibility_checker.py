@@ -34,6 +34,7 @@ class FeasibilityChecker:
         # on top of it. _check_selected_room_capacity is also early so the
         # user sees room-selection mistakes before generic capacity warnings.
         self._check_vac_slot_availability()
+        self._check_lab_access()
         self._check_selected_room_capacity()
         self._check_teacher_workload()
         self._check_fixed_slot_capacity()
@@ -588,6 +589,51 @@ class FeasibilityChecker:
                   + ")")
         else:
             print(f"   ❌ {hard_violations} subject(s) have no eligible room in the selection")
+
+    def _check_lab_access(self):
+        """
+        Every subject that needs a practical must have at least one lab whose
+        ``allowed_departments`` (or legacy ``department`` tag) admits the
+        subject's department. Catching this here lets the frontend surface a
+        precise message instead of an opaque INFEASIBLE deep inside the
+        solver.
+
+        This does NOT honour the user's room selection — that's the job of
+        ``_check_selected_room_capacity``. We only check the rooms.json
+        access rules, so a config-level mistake (forgot to whitelist a
+        department on its lab) is reported even when the user has the
+        full room set selected.
+        """
+        if not any((s.get("Practical_hours") or 0) > 0 for s in self.subjects):
+            return
+
+        print("\n📊 Checking Lab Access (allowed_departments)...")
+        from src.room_manager import RoomManager
+        rm = RoomManager()
+
+        violations = 0
+        for s in self.subjects:
+            if not (s.get("Practical_hours") or 0) > 0:
+                continue
+            labs = rm.get_labs_for_subject(s)
+            if labs:
+                continue
+            violations += 1
+            dept = s.get("Department") or "—"
+            self.issues.append(
+                f"❌ LAB ACCESS ERROR: '{s.get('Subject', '(unnamed)')}' "
+                f"[{s.get('Course_Semester', '')}] needs a practical lab but "
+                f"no labs are configured for department '{dept}'. Add a lab "
+                f"with `allowed_departments` including '{dept}' in "
+                f"config/rooms.json (or set `allowed_departments` to null/[] "
+                f"on an existing lab to make it open to all departments)."
+            )
+
+        if violations == 0:
+            print(f"   ✅ Every practical subject has at least one eligible lab")
+        else:
+            print(f"   ❌ {violations} practical subject(s) have no eligible lab "
+                  f"under current rooms.json `allowed_departments` rules")
 
     def _check_vac_slot_availability(self):
         """

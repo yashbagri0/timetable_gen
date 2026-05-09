@@ -115,77 +115,128 @@ class SolverEngine:
                         teacher_workload[teacher] += 1
         
         assistant_assignments = {}  # {(event_id, time_idx): [assistants]}
-        
+
+        # ---- Collect every lab session that needs assistants ----------------
+        # Each lab block is 2 hours (matches practical_hours below). We gather
+        # the full work list first so we can sort it by student-count desc and
+        # let the largest classes get first pick of available teachers — the
+        # opposite of the previous "iterate subjects in input order" behaviour
+        # which sometimes left big sections with no assistant after smaller
+        # earlier sections drained the pool.
+        LAB_HOURS = 2
+        pending = []  # list of dicts ready to assign
         for subj in self.subjects:
             if subj["Practical_hours"] == 0:
                 continue
-            
-            event_id = self._get_event_id(subj)
             student_count = subj["Students_count"]
-            main_teacher = subj["Teacher"]
-            department = subj["Department"]
-            
             teachers_needed = (
                 student_count + Config.LAB_TEACHER_RATIO - 1
             ) // Config.LAB_TEACHER_RATIO
-            
             assistants_needed = teachers_needed - 1
             if assistants_needed <= 0:
                 continue
-            
+
+            event_id = self._get_event_id(subj)
             for day, day_schedule in solution['master_schedule'].items():
                 for slot, classes in day_schedule.items():
                     for class_info in classes:
-                        if (
+                        if not (
                             class_info['subject'] == subj['Subject'] and
                             class_info['course_semester'] == subj['Course_Semester'] and
                             class_info['type'] == 'Practical' and
                             not class_info.get('is_continuation', False)
                         ):
-                            start_time_idx = next(
-                                (i for i, (d, s) in enumerate(solution['time_slots']) if d == day and s == slot),
-                                None
-                            )
-                            if start_time_idx is None:
-                                continue
-                            
-                            practical_hours = [start_time_idx, start_time_idx + 1]
-                            
-                            available_teachers = []
-                            for teacher in all_teachers:
-                                if teacher == main_teacher:
-                                    continue
-                                
-                                teacher_dept = next(
-                                    (s["Department"] for s in self.subjects if s["Teacher"] == teacher),
-                                    None
-                                )
-                                if teacher_dept != department:
-                                    continue
-                                
-                                if teacher_workload[teacher] >= self._cap_for(teacher):
-                                    continue
-                                
-                                if all(teacher_availability[teacher].get(h, False) for h in practical_hours):
-                                    available_teachers.append(teacher)
-                            
-                            available_teachers.sort(key=lambda t: teacher_workload[t])
-                            
-                            assigned = []
-                            for teacher in available_teachers[:assistants_needed]:
-                                assigned.append(teacher)
-                                for h in practical_hours:
-                                    teacher_availability[teacher][h] = False
-                                teacher_workload[teacher] += 2
-                            
-                            assistant_assignments[(event_id, start_time_idx)] = assigned
-                            
-                            if len(assigned) < assistants_needed:
-                                print(
-                                    f"   ⚠️  {subj['Subject']} [{subj['Course_Semester']}]: "
-                                    f"needs {teachers_needed} teachers, assigned {len(assigned) + 1}"
-                                )
-        
+                            continue
+                        start_time_idx = next(
+                            (i for i, (d, s) in enumerate(solution['time_slots'])
+                             if d == day and s == slot),
+                            None
+                        )
+                        if start_time_idx is None:
+                            continue
+                        pending.append({
+                            "subj": subj,
+                            "event_id": event_id,
+                            "student_count": student_count,
+                            "teachers_needed": teachers_needed,
+                            "assistants_needed": assistants_needed,
+                            "day": day,
+                            "slot": slot,
+                            "start_time_idx": start_time_idx,
+                            "practical_hours": [start_time_idx, start_time_idx + 1],
+                        })
+
+        # Largest sections get first pick. Stable sort keeps deterministic
+        # ordering between runs that share an input.
+        pending.sort(key=lambda p: p["student_count"], reverse=True)
+
+        if pending:
+            print(f"   📋 Assigning assistants for {len(pending)} lab session(s) "
+                  f"(largest first):")
+            for i, p in enumerate(pending, 1):
+                section = p["subj"].get("Section", "") or "—"
+                print(f"      {i}. {p['subj']['Subject']} "
+                      f"[{p['subj']['Course_Semester']}] "
+                      f"Sec {section} • {p['student_count']} students "
+                      f"• needs {p['assistants_needed']} assistant(s) "
+                      f"• {p['day']} {p['slot']}")
+
+        # ---- Assign in priority order ---------------------------------------
+        for p in pending:
+            subj = p["subj"]
+            main_teacher = subj["Teacher"]
+            department = subj["Department"]
+            practical_hours = p["practical_hours"]
+            assistants_needed = p["assistants_needed"]
+
+            available_teachers = []
+            for teacher in all_teachers:
+                if teacher == main_teacher:
+                    continue
+
+                teacher_dept = next(
+                    (s["Department"] for s in self.subjects if s["Teacher"] == teacher),
+                    None
+                )
+                if teacher_dept != department:
+                    continue
+
+                # Cap check: would adding this lab block push the teacher past
+                # their rank cap? (The previous `>= cap` test allowed someone
+                # at cap-1 to take a 2-hour lab and end up over.)
+                if teacher_workload[teacher] + LAB_HOURS > self._cap_for(teacher):
+                    continue
+
+                if all(teacher_availability[teacher].get(h, False) for h in practical_hours):
+                    available_teachers.append(teacher)
+
+            # Among eligible teachers, pick those with the lightest current
+            # load so workload stays balanced.
+            available_teachers.sort(key=lambda t: teacher_workload[t])
+
+            assigned = []
+            for teacher in available_teachers[:assistants_needed]:
+                assigned.append(teacher)
+                for h in practical_hours:
+                    teacher_availability[teacher][h] = False
+                teacher_workload[teacher] += LAB_HOURS
+
+            assistant_assignments[(p["event_id"], p["start_time_idx"])] = assigned
+
+            section = subj.get("Section", "") or "—"
+            if not assigned:
+                print(
+                    f"   ⚠️  No available assistant for {subj['Subject']} "
+                    f"Sec {section} — all eligible teachers are at their rank cap "
+                    f"or have a clash."
+                )
+            elif len(assigned) < assistants_needed:
+                print(
+                    f"   ⚠️  {subj['Subject']} [{subj['Course_Semester']}]: "
+                    f"needs {p['teachers_needed']} teachers, assigned "
+                    f"{len(assigned) + 1}"
+                )
+
         solution['assistant_assignments'] = assistant_assignments
         solution['teacher_workload_after_assistants'] = teacher_workload
         return solution

@@ -115,18 +115,71 @@ class PDFGenerator:
             self._render_pdf(filename, "Room Timetable", banner, grid, used_initials)
 
     def generate_course_semester_timetables(self, output_dir: str):
+        """
+        One combined PDF per course-semester-section (or per course-semester
+        when there are no sections). All subjects taught to that class land on
+        the same week grid, so a student can see their full week at a glance.
+
+        The existing Course_Semester ID embeds the subject name to keep the
+        solver's event IDs unique, so we strip that segment back out via
+        _course_group_key to produce the real per-class grouping.
+        """
         os.makedirs(output_dir, exist_ok=True)
-        for course_sem in sorted(set(self.course_semesters)):
+        # Wipe stale per-subject PDFs from earlier runs/older builds: their
+        # filenames don't match the new combined-PDF scheme so they'd otherwise
+        # linger in the directory and be picked up by the zip endpoint.
+        for old in os.listdir(output_dir):
+            if old.endswith("_timetable.pdf"):
+                try:
+                    os.remove(os.path.join(output_dir, old))
+                except OSError:
+                    pass
+
+        # Walk the schedule once to discover every group key actually scheduled
+        # (rather than relying on the per-subject self.course_semesters list).
+        group_keys = set()
+        for day_sched in self.master_schedule.values():
+            for classes in day_sched.values():
+                for c in classes:
+                    key = self._course_group_key(c)
+                    if key:
+                        group_keys.add(key)
+
+        for group_key in sorted(group_keys):
             grid, used_initials = self._build_grid(
-                filter_fn=lambda c: c.get('course_semester') == course_sem,
+                filter_fn=lambda c, _k=group_key: self._course_group_key(c) == _k,
                 cell_format=self._format_cell_for_course_view,
             )
-            # Banner: humanize "B.Sc. (Hons) Computer Science-Sem7-A" -> Course/Semester/Section
-            banner = self._humanize_course_sem(course_sem)
-            safe_name = course_sem.replace(' ', '_').replace('/', '_').replace('.', '')[:80]
+            banner = self._humanize_course_sem(group_key)
+            safe_name = group_key.replace(' ', '_').replace('/', '_').replace('.', '')[:80]
             filename = os.path.join(output_dir, f"{safe_name}_timetable.pdf")
             print(f"      → {filename}")
             self._render_pdf(filename, "Course Timetable", banner, grid, used_initials)
+
+    def _course_group_key(self, c: Dict) -> str:
+        """
+        Collapse a per-subject Course_Semester ID into a per-class group key.
+
+          COMMON-{TYPE}-Sem{N}-{subj_short}-Sec{X}  →  COMMON-{TYPE}-Sem{N}-Sec{X}
+          {course}-Sem{N}-{section}                 →  unchanged (section present)
+          {course}-Sem{N}-{subj_short}              →  {course}-Sem{N} (no section)
+        """
+        cs = c.get('course_semester', '') or ''
+        if not cs:
+            return ''
+        if cs.startswith("COMMON-"):
+            parts = cs.split('-')
+            if len(parts) >= 5 and parts[-1].startswith("Sec"):
+                # Drop the subject_short segment between SemN and SecX.
+                return f"{parts[0]}-{parts[1]}-{parts[2]}-{parts[-1]}"
+            return cs
+        # Regular course. If the subject has a section, the trailing chunk IS
+        # the section letter and is already class-grouped. Otherwise the
+        # trailing chunk is the subject_short tag and must be stripped.
+        if not c.get('section'):
+            stripped = '-'.join(cs.split('-')[:-1])
+            return stripped or cs
+        return cs
 
     # ============================================================
     # Grid construction (data + colors)
@@ -249,7 +302,9 @@ class PDFGenerator:
         story.append(self._make_banner(banner_text))
         story.append(Spacer(1, 4 * mm))
         story.append(self._make_grid_table(grid))
-        story.append(Spacer(1, 4 * mm))
+        story.append(Spacer(1, 3 * mm))
+        story.append(self._make_color_legend())
+        story.append(Spacer(1, 2 * mm))
         story.append(self._make_footer(used_initials))
         doc.build(story)
 
@@ -388,6 +443,49 @@ class PDFGenerator:
         tbl.setStyle(ts)
         return tbl
 
+    # ---- Color legend ------------------------------------------------------
+    def _make_color_legend(self) -> Table:
+        """Compact one-row legend mapping the grid's cell colors to subject
+        kinds. Sits just above the footer rule on every PDF."""
+        # Mirror the palette used by _make_grid_table so the legend stays in
+        # sync with whatever the grid actually paints.
+        entries = [
+            ("DSC",            self.SUBJECT_COLORS['DSC']),
+            ("DSE",            self.SUBJECT_COLORS['DSE']),
+            ("GE/SEC/VAC/AEC", self.SUBJECT_COLORS['GE']),
+            ("Lab/Practical",  self.PRACTICAL_COLOR),
+            ("Empty",          self.EMPTY_DAY_BG),
+        ]
+
+        ps = self._para_styles
+        title = Paragraph("<b>Color Key:</b>", ps['legend_label'])
+
+        # Layout: [title] [swatch] [label] [swatch] [label] … five entries.
+        row = [title]
+        col_widths = [22 * mm]
+        for label, _color in entries:
+            row.append("")  # swatch cell — colored via TableStyle BACKGROUND
+            row.append(Paragraph(self._escape(label), ps['legend_text']))
+            col_widths.append(5 * mm)    # swatch
+            col_widths.append(28 * mm)   # label
+
+        tbl = Table([row], colWidths=col_widths, rowHeights=[5.5 * mm])
+        ts = TableStyle([
+            ('VALIGN',       (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING',  (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+            ('TOPPADDING',   (0, 0), (-1, -1), 1),
+            ('BOTTOMPADDING',(0, 0), (-1, -1), 1),
+        ])
+        # Paint each swatch cell with its color and a thin grey border.
+        for i, (_label, color) in enumerate(entries):
+            swatch_col = 1 + i * 2
+            ts.add('BACKGROUND', (swatch_col, 0), (swatch_col, 0), color)
+            ts.add('BOX',        (swatch_col, 0), (swatch_col, 0), 0.4,
+                   colors.HexColor('#888888'))
+        tbl.setStyle(ts)
+        return tbl
+
     # ---- Footer -----------------------------------------------------------
     def _make_footer(self, used_initials: set) -> Table:
         # Initials → full name key, plus a generated-on/college line.
@@ -455,6 +553,14 @@ class PDFGenerator:
             ),
             'footer_body': ParagraphStyle(
                 'footer_body', parent=normal, fontName='Helvetica',
+                fontSize=7.5, leading=10, alignment=TA_LEFT,
+            ),
+            'legend_label': ParagraphStyle(
+                'legend_label', parent=normal, fontName='Helvetica-Bold',
+                fontSize=8, leading=10, alignment=TA_LEFT,
+            ),
+            'legend_text': ParagraphStyle(
+                'legend_text', parent=normal, fontName='Helvetica',
                 fontSize=7.5, leading=10, alignment=TA_LEFT,
             ),
         }

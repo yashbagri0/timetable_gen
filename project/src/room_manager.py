@@ -52,6 +52,15 @@ class RoomManager:
             # Normalize: department always stored as either lowercase string or None.
             dept = r.get("department")
             r["department"] = dept.strip().lower() if isinstance(dept, str) else None
+            # Normalize allowed_departments: list of stripped lowercase strings,
+            # or None if the field is absent / null / empty (= "open to all").
+            ad = r.get("allowed_departments")
+            if isinstance(ad, list) and ad:
+                r["allowed_departments"] = [
+                    str(d).strip().lower() for d in ad if str(d).strip()
+                ] or None
+            else:
+                r["allowed_departments"] = None
             self._rooms[rid] = r
 
     # ------------------------------------------------------------
@@ -120,6 +129,15 @@ class RoomManager:
         info = self._rooms.get(room_id, {})
         return info.get("department") == COMMERCE_DEPT
 
+    def is_computer_lab(self, room_id: str) -> bool:
+        """A lab is a 'computer lab' iff rooms.json gives it a positive
+        ``computers`` count (CL1–CL4, T14, T15 in the default config).
+        Computer labs are physically inappropriate for theory/tutorial
+        sessions, so the constraint builder prunes them from theory room
+        candidates."""
+        info = self._rooms.get(room_id, {})
+        return info.get("type") == "lab" and int(info.get("computers") or 0) > 0
+
     # ------------------------------------------------------------
     # Subject-aware filters
     # ------------------------------------------------------------
@@ -129,11 +147,16 @@ class RoomManager:
         Rules (in order):
           1. Commerce subjects ↔ commerce-tagged rooms ONLY (bidirectional hard
              exclusion; never crosses).
-          2. Non-commerce subject + room with no department tag → allowed
+          2. If the room declares `allowed_departments` (a non-empty list),
+             the subject's `Department` must appear in it (case-insensitive).
+             This is the explicit, multi-department access list — the
+             preferred way to share a lab between several departments.
+          3. Non-commerce subject + room with no department tag → allowed
              (general classroom / lab).
-          3. Non-commerce subject + room tagged with a specific department →
-             allowed only when subject's Department matches that tag (so
-             Physics labs are Physics-only, CS labs are CS-only, etc.).
+          4. Non-commerce subject + room tagged with a single `department`
+             string → allowed only when that tag matches the subject's
+             `Department` (legacy single-owner rule, kept for back-compat
+             with rooms that haven't migrated to allowed_departments yet).
         """
         room_dept = room_info.get("department")
 
@@ -143,11 +166,17 @@ class RoomManager:
         if room_dept == COMMERCE_DEPT:
             return False  # non-commerce subject can never use a commerce room
 
-        # Rule 2 — general (untagged) room: any non-commerce subject may use it
+        # Rule 2 — explicit allowed_departments list (preferred)
+        allowed = room_info.get("allowed_departments")
+        if allowed:
+            subj_dept = (subj.get("Department") or "").strip().lower()
+            return subj_dept in allowed
+
+        # Rule 3 — general (untagged) room: any non-commerce subject may use it
         if room_dept in (None, ""):
             return True
 
-        # Rule 3 — department-specific tag must match the subject's department
+        # Rule 4 — legacy single-owner tag must match the subject's department
         subj_dept = (subj.get("Department") or "").strip().lower()
         return room_dept == subj_dept
 

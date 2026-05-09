@@ -53,13 +53,16 @@
   // ============================================================
   // Save-status flash
   // ============================================================
-  let statusTimer = null;
-  function flashStatus(msg, ok = true) {
-    const el = document.getElementById("save-status");
-    el.textContent = msg;
-    el.style.color = ok ? "var(--good)" : "var(--bad)";
-    clearTimeout(statusTimer);
-    statusTimer = setTimeout(() => (el.textContent = ""), 2200);
+  let toastTimer = null;
+  function showToast(message, type = "ok") {
+    const el = document.getElementById("toast");
+    if (!el) return;
+    el.textContent = message;
+    el.classList.remove("toast-ok", "toast-err");
+    el.classList.add(type === "err" ? "toast-err" : "toast-ok");
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 2000);
   }
 
   // ============================================================
@@ -643,7 +646,7 @@
       // Always sync legacy fields on subjects right before sending.
       (userData.subjects || []).forEach(syncLegacy);
       await api.saveConfig(userData);
-      flashStatus(`✅ ${label} saved`, true);
+      showToast(`✅ ${label} saved`, "ok");
       // Any save invalidates the previously-built Excel: the user must
       // re-build before running the solver against fresh data.
       if (excelBuilt) {
@@ -658,7 +661,7 @@
       renderDashboard();
       refreshGenerateGate();
     } catch (e) {
-      flashStatus(`❌ ${e.message}`, false);
+      showToast(`❌ Save failed`, "err");
     }
   }
   document.getElementById("save-settings").addEventListener("click", () => {
@@ -1463,7 +1466,7 @@
     try {
       userData = await api.getConfig();
     } catch (e) {
-      flashStatus("❌ couldn't load config", false);
+      showToast("❌ Couldn't load config", "err");
       console.error(e);
       return;
     }

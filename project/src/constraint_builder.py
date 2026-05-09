@@ -280,6 +280,10 @@ class ConstraintBuilder:
         # commerce room for a non-commerce subject (or vice versa) later.
         # ================================================================
         rm = self.room_manager
+        # One-shot diagnostic: for the first theory subject we hit, print the
+        # room pools split into classrooms / non-computer labs / computer labs
+        # so it's obvious in the SSE log what the pre-pruning is doing.
+        diagnostic_printed = False
 
         for subj in self.subjects:
             event_id = self._get_event_id(subj)
@@ -293,13 +297,43 @@ class ConstraintBuilder:
                 lecture_tutorial_slots = allowed_slots
                 practical_slots = allowed_slots
 
-            # Subject-aware room candidates. For non-commerce subjects this is
-            # all non-commerce classrooms + non-commerce labs (theory may
-            # spill into a lab as a last resort, with a heavy soft penalty
-            # added later). For B.Com subjects, both lists are commerce-only.
-            # Then narrowed to the user's room selection (no-op if empty).
+            # Subject-aware room candidates (commerce-aware, then narrowed to
+            # the user's room selection — no-op if the selection is empty).
             allowed_classrooms = self._restrict(rm.get_classrooms_for_subject(subj))
             allowed_labs       = self._restrict(rm.get_labs_for_subject(subj))
+
+            # ------- Theory pre-pruning -------
+            # Computer labs (CL1–CL4, T14, T15 — anything with computers>0)
+            # are physically wrong for lecture/tutorial: even a low penalty
+            # gets out-prioritised when their capacity happens to fit. Strip
+            # them from the theory pool entirely so they're not even a
+            # decision variable. They remain available for practicals.
+            non_cl_labs = [lab for lab in allowed_labs if not rm.is_computer_lab(lab)]
+            cl_labs     = [lab for lab in allowed_labs if rm.is_computer_lab(lab)]
+            theory_lab_pool = non_cl_labs
+
+            # Last-resort fallback: if a subject has NO classrooms and NO
+            # non-CL labs, theory has nowhere to land — fall back to allowing
+            # CL labs (the existing high theory_in_lab penalty still applies).
+            if not allowed_classrooms and not non_cl_labs and cl_labs:
+                print(f"   ⚠️  Theory fallback: '{subj.get('Subject','?')}' "
+                      f"[{subj.get('Course_Semester','?')}] has no classroom "
+                      f"or non-computer lab — falling back to computer labs "
+                      f"with high penalty.")
+                theory_lab_pool = cl_labs
+
+            if not diagnostic_printed and (
+                subj.get("Taught_Lecture_hours", 0) > 0 or
+                subj.get("Taught_Tutorial_hours", 0) > 0
+            ):
+                print(f"   🔎 Theory room pool diagnostic for sample subject "
+                      f"'{subj.get('Subject','?')}' [{subj.get('Course_Semester','?')}]:")
+                print(f"        classrooms ({len(allowed_classrooms)}): "
+                      f"{allowed_classrooms[:8]}{'…' if len(allowed_classrooms) > 8 else ''}")
+                print(f"        non-CL labs ({len(non_cl_labs)}): {non_cl_labs}")
+                print(f"        CL labs PRUNED from theory ({len(cl_labs)}): {cl_labs}"
+                      + ("  [fallback active — included]" if theory_lab_pool is cl_labs else ""))
+                diagnostic_printed = True
 
             def _alloc_room_var(t, room, kind):
                 key = (event_id, t, room, kind)
@@ -311,13 +345,13 @@ class ConstraintBuilder:
                     f"room_{clean_id}_{t}_{clean_room}_{short_kind}"
                 )
 
-            # -------- Lecture rooms (classrooms; labs are last-resort) --------
+            # -------- Lecture rooms (classrooms; non-CL labs as fallback) --------
             if subj["Taught_Lecture_hours"] > 0:
                 for t in lecture_tutorial_slots:
                     for room in allowed_classrooms:
                         _alloc_room_var(t, room, 'lecture')
                         room_count += 1
-                    for lab in allowed_labs:
+                    for lab in theory_lab_pool:
                         _alloc_room_var(t, lab, 'lecture')
                         room_count += 1
 
@@ -327,11 +361,11 @@ class ConstraintBuilder:
                     for room in allowed_classrooms:
                         _alloc_room_var(t, room, 'tutorial')
                         room_count += 1
-                    for lab in allowed_labs:
+                    for lab in theory_lab_pool:
                         _alloc_room_var(t, lab, 'tutorial')
                         room_count += 1
 
-            # -------- Practical rooms (labs only, commerce-aware) --------
+            # -------- Practical rooms (labs only — CL labs intact here) --------
             if subj["Taught_Practical_hours"] > 0:
                 for t in practical_slots:
                     for lab in allowed_labs:
